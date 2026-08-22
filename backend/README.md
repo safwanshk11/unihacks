@@ -1,4 +1,4 @@
-# Backend — Product Intelligence API
+# Lumen backend — Product Intelligence API
 
 FastAPI service that enriches Unilog's real raw catalog rows (lighting
 fixtures & lamps slice) into structured, explainable, commerce-ready

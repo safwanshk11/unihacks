@@ -1,11 +1,16 @@
-# UniHack — AI-Powered Product Intelligence for Industrial Commerce
+# Lumen — AI-Powered Product Intelligence for Industrial Commerce
+
+Named for the unit this pipeline actually deals in: lumens, Kelvin, watts —
+real lighting-industry measurements extracted straight out of cryptic
+distributor part numbers, not just a generic "light" pun.
 
 Turns Unilog's real raw catalog rows — a manufacturer part number, a cryptic
 abbreviated description, an unbranded flag — into structured, explainable,
 commerce-ready product data: classified taxonomy, extracted attributes,
 four description formats (invoice / mobile / short / long), confidence
 scoring, source tracing (input vs. rule-inferred vs. a real local LLM call),
-and validation flags for human review.
+confidence-gated auto-approval, and validation flags for whatever's left for
+human review.
 
 A **hybrid pipeline**: deterministic regex/dictionary extraction handles the
 structured fields (finish codes, dimensions, CCT — more auditable and less
@@ -111,3 +116,9 @@ A metrics endpoint (`GET /api/metrics`) surfaces self-computed QA numbers —
 classification confidence, LOV compliance, char-limit compliance — standing
 in for field-level accuracy since the real 200-item ground truth wasn't
 available to score against.
+
+Items with no validation flags and no low-confidence field skip human
+review automatically (`status: "reviewed"`, tagged `Auto-approved` — not
+just "Reviewed" — so it stays visible that no person looked at it); anything
+else stays `Pending` for the review UI, where the catalog table sorts by
+Classpath, Confidence, or Status.

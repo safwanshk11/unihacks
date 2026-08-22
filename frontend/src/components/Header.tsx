@@ -10,9 +10,9 @@ export function Header({ onHome }: { onHome: () => void }) {
             className="h-6 w-6 rounded-md flex items-center justify-center text-white text-xs font-bold"
             style={{ backgroundColor: "var(--accent)" }}
           >
-            U
+            L
           </span>
-          <span className="text-sm font-semibold tracking-tight">UniHack</span>
+          <span className="text-sm font-semibold tracking-tight">Lumen</span>
           <span className="text-sm hidden sm:inline" style={{ color: "var(--text-faint)" }}>
             Product Intelligence
           </span>
