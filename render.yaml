@@ -3,16 +3,11 @@ services:
     name: lumen-api
     runtime: python
     rootDir: backend
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
-    disk:
-      name: lumen-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
-      - key: CATALOG_DB_PATH
-        value: /var/data/catalog.db
       - key: LLM_BACKEND
         value: gemini
       - key: GEMINI_API_KEY

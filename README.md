@@ -167,7 +167,6 @@ The repository includes [`render.yaml`](render.yaml), which creates:
 
 - a FastAPI web service for the backend,
 - a static Vite site for the frontend,
-- a 1 GB persistent disk for the SQLite catalog, and
 - the API/frontend URL wiring and SPA fallback route.
 
 In Render, choose **New → Blueprint** and connect this repository. Set the
@@ -179,7 +178,9 @@ requested secret values when prompted:
 
 The Blueprint uses Gemini because Ollama is not available inside a normal
 Render service. After deployment, open the static-site URL, sign in, and click
-**Reseed** or import a catalog. The free Render tier does not support
-persistent disks; use a paid web service for catalog data that must survive
-redeploys. SQLite is appropriate for this demo's single-service workload, not
-for multi-instance production scaling.
+**Reseed** or import a catalog. The free tier does not provide persistent
+disks, so the SQLite catalog can reset after a restart or deploy; reseed or
+import the catalog again when that happens. For data that must survive
+redeploys, attach a paid disk or move the store to Postgres. SQLite is
+appropriate for this demo's single-service workload, not for multi-instance
+production scaling.
