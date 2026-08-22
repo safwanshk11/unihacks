@@ -25,12 +25,13 @@ services:
         generateValue: true
       - key: FRONTEND_ORIGIN
         fromService:
-          type: static_site
+          type: web
           name: lumen-console
           property: host
 
-  - type: static_site
+  - type: web
     name: lumen-console
+    runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
