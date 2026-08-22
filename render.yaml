@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: lumen-api
+    name: lumen-product-api
     runtime: python
     rootDir: backend
     plan: free
@@ -23,11 +23,11 @@ services:
       - key: FRONTEND_HOST
         fromService:
           type: web
-          name: lumen-console
+          name: lumen-product-console
           envVarKey: RENDER_EXTERNAL_HOSTNAME
 
   - type: web
-    name: lumen-console
+    name: lumen-product-console
     runtime: static
     rootDir: frontend
     buildCommand: npm ci && npm run build
@@ -36,7 +36,7 @@ services:
       - key: VITE_API_HOST
         fromService:
           type: web
-          name: lumen-api
+          name: lumen-product-api
           envVarKey: RENDER_EXTERNAL_HOSTNAME
     routes:
       - type: rewrite

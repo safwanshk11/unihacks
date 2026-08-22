@@ -165,8 +165,8 @@ The backend has no separate build step; run it with Uvicorn as shown above.
 
 The repository includes [`render.yaml`](render.yaml), which creates:
 
-- a FastAPI web service for the backend,
-- a static Vite site for the frontend,
+- a FastAPI web service (`lumen-product-api`) for the backend,
+- a static Vite site (`lumen-product-console`) for the frontend,
 - the API/frontend URL wiring and SPA fallback route.
 
 In Render, choose **New → Blueprint** and connect this repository. Set the
