@@ -59,6 +59,10 @@ function App() {
     if (authed) loadProducts();
   }, [authed]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [view]);
+
   const signIn = async (username: string, password: string) => {
     const { token } = await api.login(username, password);
     session.set(token);

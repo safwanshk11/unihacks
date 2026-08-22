@@ -160,3 +160,26 @@ npm run lint
 ```
 
 The backend has no separate build step; run it with Uvicorn as shown above.
+
+## Deploy on Render
+
+The repository includes [`render.yaml`](render.yaml), which creates:
+
+- a FastAPI web service for the backend,
+- a static Vite site for the frontend,
+- a 1 GB persistent disk for the SQLite catalog, and
+- the API/frontend URL wiring and SPA fallback route.
+
+In Render, choose **New → Blueprint** and connect this repository. Set the
+requested secret values when prompted:
+
+- `GEMINI_API_KEY` — a Gemini API key for cloud enrichment;
+- `AUTH_PASSWORD` — the console password;
+- `AUTH_SECRET` is generated automatically.
+
+The Blueprint uses Gemini because Ollama is not available inside a normal
+Render service. After deployment, open the static-site URL, sign in, and click
+**Reseed** or import a catalog. The free Render tier does not support
+persistent disks; use a paid web service for catalog data that must survive
+redeploys. SQLite is appropriate for this demo's single-service workload, not
+for multi-instance production scaling.

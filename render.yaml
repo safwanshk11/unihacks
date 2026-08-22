@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: lumen-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    disk:
+      name: lumen-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: CATALOG_DB_PATH
+        value: /var/data/catalog.db
+      - key: LLM_BACKEND
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AUTH_USERNAME
+        value: admin
+      - key: AUTH_PASSWORD
+        sync: false
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: FRONTEND_ORIGIN
+        fromService:
+          type: static_site
+          name: lumen-console
+          property: host
+
+  - type: static_site
+    name: lumen-console
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: lumen-api
+          property: host
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

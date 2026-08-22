@@ -1,11 +1,13 @@
 from datetime import datetime
+import os
 
 from sqlalchemy import JSON, Column, DateTime, Integer, String, Table, create_engine, select
 from sqlalchemy.orm import Session, registry
 
 from app.models import EnrichedProduct
 
-engine = create_engine("sqlite:///./catalog.db", connect_args={"check_same_thread": False})
+database_path = os.environ.get("CATALOG_DB_PATH", "./catalog.db")
+engine = create_engine(f"sqlite:///{database_path}", connect_args={"check_same_thread": False})
 mapper_registry = registry()
 
 products_table = Table(

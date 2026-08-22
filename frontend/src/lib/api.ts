@@ -29,6 +29,7 @@ export function isSeedInProgressDetail(detail: unknown): detail is SeedInProgres
 // Session token lives in sessionStorage, not localStorage: it should not
 // outlive the browser tab for a console holding unpublished content.
 const TOKEN_KEY = "lumen.session";
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
 export const session = {
   get: () => sessionStorage.getItem(TOKEN_KEY),
@@ -42,7 +43,7 @@ export function authHeaders(extra: Record<string, string> = {}): Record<string, 
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${API_BASE}/api${path}`, {
     ...init,
     headers: authHeaders({ "Content-Type": "application/json", ...(init?.headers as Record<string, string>) }),
   });
@@ -71,7 +72,7 @@ export const api = {
     const body = new FormData();
     body.append("file", file);
     // No Content-Type header — the browser must set the multipart boundary.
-    const res = await fetch("/api/products/upload", { method: "POST", body, headers: authHeaders() });
+    const res = await fetch(`${API_BASE}/api/products/upload`, { method: "POST", body, headers: authHeaders() });
     if (!res.ok) {
       const text = await res.text();
       let detail: unknown;
@@ -94,7 +95,7 @@ export const api = {
     }
     // Navigating the window would drop the Authorization header, so fetch
     // the file and hand the browser a blob instead.
-    const res = await fetch(`/api/products/export?${params.toString()}`, { headers: authHeaders() });
+    const res = await fetch(`${API_BASE}/api/products/export?${params.toString()}`, { headers: authHeaders() });
     if (!res.ok) throw new ApiError(res.status, undefined, `Export failed: ${res.status} ${res.statusText}`);
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -118,7 +119,7 @@ export const api = {
   evaluate: async (file: File) => {
     const body = new FormData();
     body.append("file", file);
-    const res = await fetch("/api/products/evaluate", { method: "POST", body, headers: authHeaders() });
+    const res = await fetch(`${API_BASE}/api/products/evaluate`, { method: "POST", body, headers: authHeaders() });
     if (!res.ok) {
       const text = await res.text();
       let detail: unknown;

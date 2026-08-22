@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+import os
 
 load_dotenv()  # must run before anything imports app.llm.llm_client, which reads
 # LLM_BACKEND / GEMINI_API_KEY from the environment at import time
@@ -15,7 +16,13 @@ app = FastAPI(title="UniHack Product Intelligence API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        *([os.environ["FRONTEND_ORIGIN"]] if os.environ.get("FRONTEND_ORIGIN") else []),
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -34,10 +34,12 @@
   --k5000: #cfe0f0;
   --k6500: #a6c6e8;
 
-  /* The one data colour. */
+  /* Review status colors. */
   --signal: #a8530a;
   --signal-mark: #e5891a;
   --signal-wash: #fdf4e8;
+  --approved-auto: #4f8a5b;
+  --approved-human: #356b43;
 
   /* Confidence scale. Mixed toward the warm paper rather than pulled off a
      traffic light, so three states read at a glance without the page
@@ -88,6 +90,7 @@ body::before {
 #root {
   position: relative;
   z-index: 1;
+  zoom: 1.1;
 }
 
 .font-mono {
