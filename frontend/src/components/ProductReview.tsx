@@ -144,6 +144,7 @@ export function ProductReview({
       </div>
 
       <div className="pt-2">
+        <span className="cct-rule block w-16 rounded-full mb-6" />
         <h1 className="text-[30px] leading-[1.14] font-semibold tracking-[-0.035em] max-w-[42ch]">
           {product.short_desc.value}
         </h1>
@@ -173,7 +174,8 @@ export function ProductReview({
         </div>
 
         {/* ENRICHED */}
-        <div className="surface px-6 pt-6 pb-2 overflow-hidden">
+        <div className="surface px-6 pb-2 overflow-hidden">
+          <div className="cct-rule -mx-6 mb-6" />
           <div className="eyebrow pb-3 mb-1 border-b" style={{ borderColor: "var(--rule-soft)" }}>
             Enriched
           </div>
