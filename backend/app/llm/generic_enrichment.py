@@ -92,6 +92,51 @@ def llm_classify(part_desc: str, part_manuf: str) -> dict | None:
     return {k: result[k].strip() for k in needed}
 
 
+IDENTIFY_SYSTEM = (
+    "You identify the true manufacturer and consumer brand of an industrial "
+    "product from its part number and description. Respond with strict JSON only."
+)
+
+
+def llm_identify_manufacturer(part_desc: str, mfg_part_num: str, supplier: str) -> dict | None:
+    """Resolve the real manufacturer/brand, which is often NOT Part_Manuf.
+
+    Scoring against ground truth exposed this: for 'WDTS7024RZ Dishwasher',
+    Part_Manuf is "Appliance Dealers Cooperative" — a buying co-op — while
+    the answer is "Whirlpool Corporation" / "Whirlpool®". Treating the
+    supplier as the manufacturer was one wrong value that then propagated
+    into brand, mobile, short and long descriptions: five fields from one
+    mistake.
+
+    Returns None when the model has no confident answer, so the caller can
+    fall back to the supplier string rather than accept a guess.
+    """
+    prompt = (
+        f"Manufacturer part number: {mfg_part_num!r}\n"
+        f"Product description: {part_desc!r}\n"
+        f"Listed supplier (may be a distributor or buying co-op, not the maker): {supplier!r}\n\n"
+        "Identify the company that actually manufactures this product, and the brand "
+        "name it is sold under. Part-number formats are often distinctive to a maker.\n"
+        "If you cannot identify it with confidence, return null for both — do not guess.\n"
+        'Respond as JSON: {"manufacturer": "Whirlpool Corporation", "brand": "Whirlpool", "confident": true}'
+    )
+    try:
+        result = generate_json(prompt, system=IDENTIFY_SYSTEM)
+    except LLMUnavailable:
+        return None
+
+    if not result.get("confident"):
+        return None
+    manufacturer = result.get("manufacturer")
+    brand = result.get("brand")
+    if not isinstance(manufacturer, str) or not manufacturer.strip():
+        return None
+    return {
+        "manufacturer": manufacturer.strip(),
+        "brand": brand.strip() if isinstance(brand, str) and brand.strip() else manufacturer.strip(),
+    }
+
+
 def _normalise(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", text.lower())
 

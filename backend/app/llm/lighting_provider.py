@@ -61,15 +61,15 @@ MOUNTING_BY_FIXTURE = {
 # duplicating the leaf-mapping logic scattered across FIXTURE_PATTERNS and
 # _classify_bulb.
 FIXTURE_TYPE_CLASSPATH: dict[str, str] = {
-    label: f"Electrical & Lighting > Lighting Fixtures > {leaf}" for _, label, leaf in FIXTURE_PATTERNS
+    label: f"Electrical & Lighting>Lighting Fixtures>{leaf}" for _, label, leaf in FIXTURE_PATTERNS
 }
-FIXTURE_TYPE_CLASSPATH["General Lighting Fixture"] = "Electrical & Lighting > Lighting Fixtures > General Lighting"
-FIXTURE_TYPE_CLASSPATH["Flashlight"] = "Electrical & Lighting > Portable Lighting > Flashlights"
-FIXTURE_TYPE_CLASSPATH["LED Lamp"] = "Electrical & Lighting > Lamps & Bulbs > LED Lamps"
-FIXTURE_TYPE_CLASSPATH["HID Lamp"] = "Electrical & Lighting > Lamps & Bulbs > HID Lamps"
-FIXTURE_TYPE_CLASSPATH["Fluorescent Lamp"] = "Electrical & Lighting > Lamps & Bulbs > Fluorescent Lamps"
-FIXTURE_TYPE_CLASSPATH["Halogen Lamp"] = "Electrical & Lighting > Lamps & Bulbs > Halogen Lamps"
-FIXTURE_TYPE_CLASSPATH["Incandescent Lamp"] = "Electrical & Lighting > Lamps & Bulbs > Incandescent Lamps"
+FIXTURE_TYPE_CLASSPATH["General Lighting Fixture"] = "Electrical & Lighting>Lighting Fixtures>General Lighting"
+FIXTURE_TYPE_CLASSPATH["Flashlight"] = "Electrical & Lighting>Portable Lighting>Flashlights"
+FIXTURE_TYPE_CLASSPATH["LED Lamp"] = "Electrical & Lighting>Lamps & Bulbs>LED Lamps"
+FIXTURE_TYPE_CLASSPATH["HID Lamp"] = "Electrical & Lighting>Lamps & Bulbs>HID Lamps"
+FIXTURE_TYPE_CLASSPATH["Fluorescent Lamp"] = "Electrical & Lighting>Lamps & Bulbs>Fluorescent Lamps"
+FIXTURE_TYPE_CLASSPATH["Halogen Lamp"] = "Electrical & Lighting>Lamps & Bulbs>Halogen Lamps"
+FIXTURE_TYPE_CLASSPATH["Incandescent Lamp"] = "Electrical & Lighting>Lamps & Bulbs>Incandescent Lamps"
 
 LAMP_LABELS = {"LED Lamp", "HID Lamp", "Fluorescent Lamp", "Halogen Lamp", "Incandescent Lamp"}
 
@@ -117,14 +117,14 @@ def _is_bulb(part_desc: str) -> bool:
 
 def _classify_bulb(part_desc: str) -> tuple[str, str]:
     if re.search(r"\bsodium\b", part_desc, re.IGNORECASE):
-        return "HID Lamp", "Electrical & Lighting > Lamps & Bulbs > HID Lamps"
+        return "HID Lamp", "Electrical & Lighting>Lamps & Bulbs>HID Lamps"
     if re.search(r"\bflor\b", part_desc, re.IGNORECASE):
-        return "Fluorescent Lamp", "Electrical & Lighting > Lamps & Bulbs > Fluorescent Lamps"
+        return "Fluorescent Lamp", "Electrical & Lighting>Lamps & Bulbs>Fluorescent Lamps"
     if re.search(r"\bhalogen\b", part_desc, re.IGNORECASE):
-        return "Halogen Lamp", "Electrical & Lighting > Lamps & Bulbs > Halogen Lamps"
+        return "Halogen Lamp", "Electrical & Lighting>Lamps & Bulbs>Halogen Lamps"
     if re.search(r"\bincan\b", part_desc, re.IGNORECASE):
-        return "Incandescent Lamp", "Electrical & Lighting > Lamps & Bulbs > Incandescent Lamps"
-    return "LED Lamp", "Electrical & Lighting > Lamps & Bulbs > LED Lamps"
+        return "Incandescent Lamp", "Electrical & Lighting>Lamps & Bulbs>Incandescent Lamps"
+    return "LED Lamp", "Electrical & Lighting>Lamps & Bulbs>LED Lamps"
 
 
 LIGHTING_MANUFACTURERS = {"Kichler", "Satco", "Phillips", "Feit Electric", "Streamlight"}
@@ -140,11 +140,11 @@ def classify_lighting(part_desc: str, manufacturer_trade_name: str | None) -> tu
     through to the category-agnostic path instead.
     """
     if manufacturer_trade_name == "Streamlight":
-        return "Flashlight", "Electrical & Lighting > Portable Lighting > Flashlights", False
+        return "Flashlight", "Electrical & Lighting>Portable Lighting>Flashlights", False
 
     for pattern, label, leaf in FIXTURE_PATTERNS:
         if re.search(pattern, part_desc, re.IGNORECASE):
-            return label, f"Electrical & Lighting > Lighting Fixtures > {leaf}", False
+            return label, f"Electrical & Lighting>Lighting Fixtures>{leaf}", False
 
     if _is_bulb(part_desc):
         # Bulb heuristics lean on wattage/CCT/pack patterns that also appear
@@ -445,6 +445,14 @@ def _attr_display(attr: Attribute) -> str:
     return format_with_uom(attr.value, attr.uom) if attr.uom else attr.value
 
 
+def _same_name(a: str, b: str) -> bool:
+    """Manufacturer and brand often resolve to the same company; the
+    description formulas must not print it twice."""
+    norm = lambda s: re.sub(r"[^a-z0-9]", "", s.lower())  # noqa: E731
+    na, nb = norm(a), norm(b)
+    return bool(na) and bool(nb) and (na == nb or na.startswith(nb) or nb.startswith(na))
+
+
 def _build_descriptions(
     manufacturer_name: str,
     brand: str,
@@ -455,14 +463,33 @@ def _build_descriptions(
 ) -> tuple[EnrichedField, EnrichedField, EnrichedField, EnrichedField]:
     finish = next((a for a in attributes if a.label == "Finish"), None)
     finish_value = finish.value if finish and finish.value != "Not specified" else None
-    extra = [a for a in attributes if a.label not in ("Fixture Type", "Finish", "Mounting Type", "Light Source")]
+    extra = [
+        a
+        for a in attributes
+        if a.label not in ("Fixture Type", "Finish", "Mounting Type", "Light Source")
+        # An extracted attribute often restates the item type ("Type =
+        # Dishwasher"), which produced "DISHWASHER DISHWASHER" on the
+        # invoice line. Scoring against ground truth is what surfaced it.
+        and a.value.strip().lower() != fixture_type.strip().lower()
+        # The part number is its own column; repeating it inside the invoice
+        # line just burns characters against the 40-char limit.
+        and a.value.strip().lower() != mpn.strip().lower()
+        and a.label.strip().lower() not in ("manufacturer part number", "part number", "mpn", "type")
+    ]
 
     invoice_parts = [fixture_type.upper()]
     if finish_value:
         invoice_parts.append(finish_value.upper())
-    for a in extra[:1]:
+    for a in extra[:2]:
         invoice_parts.append(_attr_display(a).upper())
-    invoice_text = " ".join(invoice_parts)
+    # Keep first occurrence only — descriptors legitimately overlap.
+    seen_words: set[str] = set()
+    deduped: list[str] = []
+    for part in invoice_parts:
+        if part not in seen_words:
+            seen_words.add(part)
+            deduped.append(part)
+    invoice_text = " ".join(deduped)
     invoice_desc = EnrichedField(
         value=invoice_text[:40],
         confidence=Confidence.medium,
@@ -475,7 +502,11 @@ def _build_descriptions(
     # worked example — real listings pad this out with marketing copy we
     # don't have, so this is an honest best-effort, not a guarantee.
     descriptors = [v for v in [finish_value, mounting] if v] + [_attr_display(a) for a in extra]
-    mobile_base = f"{manufacturer_name} {brand}, {fixture_type}"
+    # Ground truth writes "Whirlpool, Dishwasher, …" — one name, not the
+    # manufacturer and brand repeated. Ours read "Appliance Dealers
+    # Cooperative Appliance Dealers Cooperative, …" whenever they matched.
+    lead = brand if _same_name(manufacturer_name, brand) else f"{manufacturer_name} {brand}"
+    mobile_base = f"{lead}, {fixture_type}"
     used: list[str] = []
     mobile_text = f"{mobile_base}, {mpn}"
     for d in descriptors:

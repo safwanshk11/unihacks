@@ -10,6 +10,7 @@ from app.llm.factory import get_provider
 from app.models import Attribute, Confidence, EnrichedField, ProductPatch, RawProductIn, Severity, Source, ValidationFlag
 from app.sample_data import SAMPLE_PRODUCTS
 from app.schema.delivery_format import rows_to_csv
+from app.scoring import load_ground_truth, score
 from app.sorting import CONFIDENCE_RANK, overall_confidence_rank, sort_products
 from app.store import clear_products, get_product, insert_product, list_products, update_product
 from app.validation import validate
@@ -129,6 +130,24 @@ async def upload_catalog(file: UploadFile = File(...)):
         return {"imported": len(products), "filename": file.filename}
     finally:
         _seed_lock.release()
+
+
+@router.post("/evaluate")
+async def evaluate_against_ground_truth(file: UploadFile = File(...)):
+    """Score the enriched catalogue against a known-good Delivery Format
+    file — the accuracy metric the brief says judges will look for.
+
+    Works with the 2-row worked example that ships here and with the full
+    200-item file unchanged; rows are joined on part number.
+    """
+    content = await file.read()
+    truth = load_ground_truth(content)
+    if not truth:
+        raise HTTPException(
+            status_code=400,
+            detail="No rows found. Expected a Delivery Format CSV with a Mfg_Part_Num or PART_NUMBER column.",
+        )
+    return score(list_products(), truth)
 
 
 @router.get("/export")

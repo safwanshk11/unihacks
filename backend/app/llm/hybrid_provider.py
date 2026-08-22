@@ -20,7 +20,7 @@ everywhere else. Nothing silently mislabels.
 from __future__ import annotations
 
 from app.llm.base import EnrichmentProvider
-from app.llm.generic_enrichment import llm_classify, llm_extract_attributes
+from app.llm.generic_enrichment import llm_classify, llm_extract_attributes, llm_identify_manufacturer
 from app.llm.lighting_provider import (
     build_descriptions,
     classify_lighting,
@@ -38,6 +38,14 @@ from app.models import (
     Source,
     ValidationFlag,
 )
+
+def _same_company(a: str, b: str) -> bool:
+    import re as _re
+
+    norm = lambda s: _re.sub(r"[^a-z0-9]", "", s.lower())  # noqa: E731
+    na, nb = norm(a), norm(b)
+    return bool(na) and bool(nb) and (na == nb or na.startswith(nb) or nb.startswith(na))
+
 
 DESCRIBE_SYSTEM = (
     "You write short, factual product copy for an industrial-commerce catalogue listing. "
@@ -76,6 +84,39 @@ class HybridEnrichmentProvider(EnrichmentProvider):
         flags: list[ValidationFlag] = []
         manufacturer_name, brand_name, trade = resolve_manufacturer_and_brand(raw)
 
+        # Part_Manuf is the *supplier*, which for co-ops and distributors is
+        # not the manufacturer. Try to resolve the real maker before anything
+        # downstream copies the wrong name into four description fields.
+        if is_available():
+            identified = llm_identify_manufacturer(raw.part_desc, raw.mfg_part_num, raw.part_manuf)
+            if identified and not _same_company(identified["manufacturer"], manufacturer_name.value):
+                supplier = manufacturer_name.value
+                manufacturer_name = EnrichedField(
+                    value=identified["manufacturer"],
+                    confidence=Confidence.medium,
+                    source=Source.llm,
+                    rationale=(
+                        f"Identified from the part number by {MODEL_NAME} ({LLM_BACKEND}); "
+                        f"Part_Manuf named {supplier!r}, which is the supplier, not the maker."
+                    ),
+                )
+                brand_name = EnrichedField(
+                    value=identified["brand"],
+                    confidence=Confidence.medium,
+                    source=Source.llm,
+                    rationale=f"Brand paired with the identified manufacturer by {MODEL_NAME} ({LLM_BACKEND}).",
+                )
+                flags.append(
+                    ValidationFlag(
+                        field="MANUFACTURER_NAME",
+                        issue=(
+                            f"Supplier {supplier!r} was replaced with identified manufacturer "
+                            f"{identified['manufacturer']!r} — worth a human check."
+                        ),
+                        severity=Severity.info,
+                    )
+                )
+
         # --- 2. classification -----------------------------------------
         lighting = classify_lighting(raw.part_desc, trade)
         llm_up = is_available()
@@ -93,7 +134,7 @@ class HybridEnrichmentProvider(EnrichmentProvider):
             classified = llm_classify(raw.part_desc, raw.part_manuf) if llm_up else None
             if classified:
                 item_type = classified["item_type"]
-                classpath_value = f"{classified['dept']} > {classified['class']} > {classified['fine']}"
+                classpath_value = f"{classified['dept']}>{classified['class']}>{classified['fine']}"
                 classpath = EnrichedField(
                     value=classpath_value,
                     confidence=Confidence.medium,
