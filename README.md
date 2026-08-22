@@ -26,10 +26,23 @@ key), switchable with one env var — see
 rule-based vs. model-generated, and why.
 
 Built for the UniHack challenge: *AI-Powered Product Intelligence for
-Industrial Commerce* — scoped to the **lighting fixtures & lamps** slice of
-Unilog's real 1,000-row sample dataset (211 rows: Kichler, Satco, Phillips,
-Feit Electric, Streamlight), per the brief's own "depth beats breadth"
-guidance rather than a shallow pass over the full catalog.
+Industrial Commerce*.
+
+**Two lanes, one router.** Lighting fixtures & lamps are specified to depth
+— finish codes read out of MPN suffixes, ANSI bulb shapes, CCT, lumens —
+answering the brief's "depth beats breadth." Every other category routes to
+a generic lane that classifies and extracts with the model, so a dishwasher,
+a pipe coupling or a hex bolt each come out as themselves. Nothing is
+mislabelled to fit the specialist schema.
+
+**Feed it your own data.** `Import file` takes a `.csv` or `.xlsx`
+catalogue; the header row is located rather than assumed, and column names
+are matched loosely. The pipeline is not bound to the sample in this repo.
+
+**Output is the real contract.** Export emits Unilog's Delivery Format —
+all **252 static headers, exact names, none added, renamed or removed**.
+Fields a raw 6-column input cannot supply are left empty rather than
+invented.
 
 ## What's real vs. placeholder
 
@@ -106,6 +119,14 @@ Every generated field carries:
 Every enumerated attribute also carries **lov_compliant** — whether the
 value falls inside the placeholder controlled vocabulary (not Unilog's real
 Unicat LOV).
+
+Cryptic trade shorthand is decoded before anything reads it — `3/8 CPLG BRS
+150#` becomes `3/8 Coupling Brass 150 Pound Class`. That is the brief's own
+opening example, and without it the classifier called that row a hex bolt.
+
+Values the model proposes are only trusted when they trace back to the
+source text; anything unverifiable is kept at low confidence and routed to a
+human rather than silently accepted.
 
 A rule-based validation layer (`backend/app/validation.py`) flags character-
 limit violations, placeholder-LOV misses, and — notably — cases where the

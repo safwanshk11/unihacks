@@ -1,14 +1,15 @@
-import csv
 import io
 import threading
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.dedup import find_exact_duplicate_mpns, find_near_duplicate_titles
+from app.ingest import IngestError, parse_catalog
 from app.llm.factory import get_provider
 from app.models import Attribute, Confidence, EnrichedField, ProductPatch, RawProductIn, Severity, Source, ValidationFlag
 from app.sample_data import SAMPLE_PRODUCTS
+from app.schema.delivery_format import rows_to_csv
 from app.sorting import CONFIDENCE_RANK, overall_confidence_rank, sort_products
 from app.store import clear_products, get_product, insert_product, list_products, update_product
 from app.validation import validate
@@ -104,51 +105,48 @@ def get_products():
     return list_products()
 
 
+@router.post("/upload")
+async def upload_catalog(file: UploadFile = File(...)):
+    """Ingest a raw catalogue (CSV or XLSX) and enrich every row.
+
+    This is the path the evaluation dataset takes — the pipeline is not
+    bound to the sample file that ships in this repo.
+    """
+    if not _seed_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409,
+            detail={"message": "An import is already in progress.", "done": len(list_products()), "total": 0},
+        )
+    try:
+        content = await file.read()
+        try:
+            raws = parse_catalog(file.filename or "", content)
+        except IngestError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        clear_products()
+        products = _enrich_batch(raws)
+        return {"imported": len(products), "filename": file.filename}
+    finally:
+        _seed_lock.release()
+
+
 @router.get("/export")
 def export_products(format: str = "csv", sort: str | None = None, direction: str = "asc"):
+    """Emit Unilog's Delivery Format — all 252 static headers, exact names,
+    none added, renamed or removed."""
     products = sort_products(list_products(), sort, direction)
 
     if format == "json":
         return products
 
     buffer = io.StringIO()
-    attr_labels: list[str] = []
-    for p in products:
-        for attr in p.attributes:
-            if attr.label not in attr_labels:
-                attr_labels.append(attr.label)
-
-    fieldnames = [
-        "id", "mfg_part_num", "manufacturer_name", "brand_name", "classpath",
-        "invoice_desc", "mobile_desc", "short_desc", "long_desc",
-        *attr_labels, "status",
-    ]
-    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
-    writer.writeheader()
-    for p in products:
-        row = {
-            "id": p.id,
-            "mfg_part_num": p.raw_mfg_part_num,
-            "manufacturer_name": p.manufacturer_name.value,
-            "brand_name": p.brand_name.value,
-            "classpath": p.classpath.value,
-            "invoice_desc": p.invoice_desc.value,
-            "mobile_desc": p.mobile_desc.value,
-            "short_desc": p.short_desc.value,
-            "long_desc": p.long_desc.value,
-            "status": p.status,
-        }
-        by_label = {a.label: a for a in p.attributes}
-        for label in attr_labels:
-            attr = by_label.get(label)
-            row[label] = f"{attr.value} {attr.uom}".strip() if attr and attr.uom else (attr.value if attr else "")
-        writer.writerow(row)
-
+    rows_to_csv(products, buffer)
     buffer.seek(0)
     return StreamingResponse(
         buffer,
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=enriched_lighting_catalog.csv"},
+        headers={"Content-Disposition": "attachment; filename=unilog_delivery_format.csv"},
     )
 
 

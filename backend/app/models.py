@@ -65,10 +65,18 @@ class EnrichedProduct(BaseModel):
     raw_mfg_part_num: str
     raw_part_desc: str
     raw_part_manuf: str
+    raw_e1_brand: Optional[str] = None
+    raw_unilog_brand: Optional[str] = None
+    raw_dib_brand: Optional[str] = None
 
     manufacturer_name: EnrichedField
     brand_name: EnrichedField
     classpath: EnrichedField
+
+    # Leaf item type ("Dishwasher", "Wall Sconce") — drives Product Name in
+    # the Delivery Format and the noun in every generated description.
+    item_type: str = ""
+    features: list[str] = Field(default_factory=list)
 
     invoice_desc: EnrichedField  # <=40 char, CAPS
     mobile_desc: EnrichedField  # 60-80 char

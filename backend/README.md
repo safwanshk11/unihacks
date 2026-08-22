@@ -1,8 +1,8 @@
 # Lumen backend — Product Intelligence API
 
-FastAPI service that enriches Unilog's real raw catalog rows (lighting
-fixtures & lamps slice) into structured, explainable, commerce-ready
-product data.
+FastAPI service that enriches Unilog's raw catalogue rows — any category —
+into structured, explainable, commerce-ready product data, and emits them in
+the 252-column Delivery Format.
 
 ## Run
 
@@ -59,9 +59,9 @@ Runs at ~1s/item on Apple Silicon once the model is warm.
 Either way, if the configured backend isn't reachable — Ollama not running,
 Gemini key missing/invalid/rate-limited — the app keeps working. It falls
 back to the pure rule-based result per item and appends a visible `info`
-validation flag saying so, rather than failing the request. Set
-`LLM_PROVIDER=lighting` to skip the LLM entirely and always use the
-deterministic-only pipeline (no `.env` needed at all in that mode).
+validation flag saying so, rather than failing the request. Rows the specialist lane recognises (lighting) still enrich fully without a
+model; rows that need the generic lane will be flagged for a human instead
+of guessed at.
 
 ## The data
 
@@ -75,6 +75,32 @@ is what **Reseed from real data** in the UI seeds from.
 Unilog's own 2 worked examples of the full 252-column target schema — used
 to calibrate the description-building formulas (casing, `®` placement, UOM
 spacing) even though they're a different category.
+
+## Output contract — the 252-column Delivery Format
+
+`GET /api/products/export?format=csv` emits Unilog's Delivery Format:
+**all 252 static headers, exact names, none added, renamed or removed.**
+The header list is not retyped — `app/schema/delivery_format.py` reads it
+from a verbatim copy of the Expected Output header row
+(`app/schema/delivery_format_headers.csv`), so it cannot drift.
+
+Fields a 6-column raw input cannot supply (UPC, list price, image
+filenames, country of origin, …) are emitted **empty rather than invented**.
+The brief is explicit that fabricated values score zero and that reporting a
+gap honestly is a strength.
+
+## Ingesting the evaluation dataset
+
+`POST /api/products/upload` accepts a **.csv or .xlsx** catalogue and
+enriches every row — this is how the assessment dataset gets processed; the
+pipeline is not bound to the sample that ships here. `app/ingest.py` is
+deliberately tolerant of real spreadsheets:
+
+- column names are matched loosely (case, spaces vs underscores, aliases
+  like `MPN` / `Manufacturer Part Number` for `Mfg_Part_Num`),
+- the header row is *located*, not assumed to be row 1, because the pack's
+  own files carry title rows and merged cells above it,
+- for XLSX, each sheet is tried until one looks like a product catalogue.
 
 ## What's real vs. placeholder
 
@@ -101,22 +127,45 @@ against — `GET /api/metrics` reports internal QA metrics instead
 (classification confidence, LOV compliance, char-limit compliance, dedup
 flags), not correctness against a known-good answer.
 
-## Pipeline
+## Pipeline — two lanes, one router
 
-`app/llm/lighting_provider.py`, in order:
+`app/llm/hybrid_provider.py` routes every row:
 
-1. **Classify** — bulb/lamp vs. fixture (Phillips' catalog turned out to be
-   almost entirely replacement bulbs, not fixtures — detected from ANSI
-   shape codes like `A19`/`BR30` and base-type words, not guessed), then
-   fixture/lamp type from description keywords.
-2. **Extract attributes** — finish color from MPN suffix codes (`45573BK` →
-   Black) or trailing description words, CCT/wattage/dimensions via regex,
-   bulb shape/base/pack quantity for lamps.
-3. **Normalize** — manufacturer/brand cleanup (placeholder-token filtering,
-   trade-name lookup), UOM formatting, decimal→fraction for dimensions.
-4. **Build descriptions** — invoice (≤40 char, CAPS), mobile (60–80 char,
-   greedily padded with attributes to hit the target), short (title), long
-   — all modeled on Unilog's own worked example.
+**Common to all categories (deterministic):** manufacturer/brand
+normalisation with placeholder filtering (`-- Unbranded --` → the
+manufacturer trade name), UOM formatting, decimal→fraction, the four
+description formulas with their character limits, validation, dedup and
+auto-approval.
+
+**Lane A — specialist (lighting).** `classify_lighting()` gets first
+refusal. When it recognises a row, deterministic extractors pull finish
+colour from MPN suffix codes (`45573BK` → Black), ANSI bulb shapes
+(`A19`/`BR30`), CCT, wattage, lumens and dimensions. This is the depth the
+brief asks for in "one category done fully."
+
+Crucially, `classify_lighting()` returns **None** when it does not recognise
+a row. It used to fall back to "General Lighting Fixture", which is how a
+dishwasher once came out of this pipeline as a lighting fixture — with a
+fluent LLM description written over the wrong facts, exactly the failure the
+brief says scores zero.
+
+**Lane B — generic (everything else).** `app/llm/generic_enrichment.py`
+classifies with the model against a fixed department list and extracts
+label/value/uom attributes. Two guards, both added after observed failures:
+
+- **Trade shorthand is expanded first** (`app/reference/abbreviations.py`).
+  `3/8 CPLG BRS 150#` classified as a *Hex Bolt* until it was expanded to
+  `3/8 Coupling Brass 150 Pound Class`. This is the brief's own opening
+  example of the problem, and it is the "input analysis" pipeline step.
+- **Every extracted value must trace back to the source text.** A value the
+  model returns that cannot be found in the input is kept at *low*
+  confidence and flagged for a human — never silently accepted. This is what
+  stops the model helpfully supplying a plausible-but-absent spec.
+
+Accuracy on Lane B scales with the model: `llama3.2:3b` gets the item type
+and sub-category right consistently but sometimes picks an imperfect
+department. Switching `LLM_BACKEND=gemini` improves it without a code
+change.
 
 `app/dedup.py` runs separately, batch-wide, after enrichment: exact MPN
 collisions plus near-verbatim description matches (tuned to 0.97 similarity

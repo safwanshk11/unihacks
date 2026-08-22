@@ -127,20 +127,33 @@ def _classify_bulb(part_desc: str) -> tuple[str, str]:
     return "LED Lamp", "Electrical & Lighting > Lamps & Bulbs > LED Lamps"
 
 
-def _classify(part_desc: str, manufacturer_trade_name: str | None) -> tuple[str, str, bool]:
-    """Returns (fixture_type_label, classpath, is_bulb)."""
+LIGHTING_MANUFACTURERS = {"Kichler", "Satco", "Phillips", "Feit Electric", "Streamlight"}
+
+
+def classify_lighting(part_desc: str, manufacturer_trade_name: str | None) -> tuple[str, str, bool] | None:
+    """Returns (item_type, classpath, is_bulb), or None when this row is not
+    recognisably a lighting product.
+
+    Returning None is the important part: this is a *specialist* layer, and a
+    specialist that claims every row is why a dishwasher once came out of
+    here as a 'General Lighting Fixture'. Anything unmatched now falls
+    through to the category-agnostic path instead.
+    """
     if manufacturer_trade_name == "Streamlight":
         return "Flashlight", "Electrical & Lighting > Portable Lighting > Flashlights", False
-
-    if _is_bulb(part_desc):
-        label, classpath = _classify_bulb(part_desc)
-        return label, classpath, True
 
     for pattern, label, leaf in FIXTURE_PATTERNS:
         if re.search(pattern, part_desc, re.IGNORECASE):
             return label, f"Electrical & Lighting > Lighting Fixtures > {leaf}", False
 
-    return "General Lighting Fixture", "Electrical & Lighting > Lighting Fixtures > General Lighting", False
+    if _is_bulb(part_desc):
+        # Bulb heuristics lean on wattage/CCT/pack patterns that also appear
+        # outside lighting, so only trust them for a known lighting supplier.
+        if manufacturer_trade_name in LIGHTING_MANUFACTURERS:
+            label, classpath = _classify_bulb(part_desc)
+            return label, classpath, True
+
+    return None
 
 
 # --- Step 4: attribute extraction ---------------------------------------
@@ -503,107 +516,94 @@ def _build_descriptions(
     return invoice_desc, mobile_desc, short_desc, long_desc
 
 
-class LightingEnrichmentProvider(EnrichmentProvider):
-    """Deterministic pipeline for the lighting-fixtures category. See
-    module docstring. Reference data used here (manufacturer normalization,
-    LOV, UOM) is self-authored placeholder data — see app/reference/."""
+def extract_lighting_attributes(mfg_part_num: str, part_desc: str, item_type: str, is_bulb: bool) -> list[Attribute]:
+    """The specialist extraction layer — only ever called for rows that
+    `classify_lighting` positively recognised."""
+    light_source_attr = _extract_light_source(part_desc, item_type)
+    type_attr = Attribute(
+        label="Fixture Type",
+        value=item_type,
+        confidence=Confidence.high,
+        source=Source.inferred,
+        rationale=f"Matched keywords in the description to '{item_type}'.",
+        lov_compliant=is_lov_compliant("Fixture Type", item_type),
+    )
 
-    def enrich(self, raw: RawProductIn) -> EnrichedProduct:
-        clean_mfr = clean_manufacturer_name(raw.part_manuf)
-        trade = trade_name(clean_mfr) or clean_mfr
-
-        manufacturer_name = EnrichedField(
-            value=clean_mfr,
-            confidence=Confidence.high,
-            source=Source.input,
-            rationale="Cleaned from Part_Manuf (stripped the trailing manufacturer code).",
-        )
-
-        if is_placeholder(raw.e1_brand):
-            brand_name = EnrichedField(
-                value=trade,
-                confidence=Confidence.medium,
-                source=Source.inferred,
-                rationale="E1_Brand was a placeholder ('-- Unbranded --'); used the manufacturer's trade name instead, per the brief's own rule.",
-            )
-        else:
-            brand_name = EnrichedField(
-                value=raw.e1_brand,
-                confidence=Confidence.high,
-                source=Source.input,
-                rationale="Taken directly from E1_Brand.",
-            )
-
-        fixture_type, classpath_value, is_bulb = _classify(raw.part_desc, trade)
-        classpath = EnrichedField(
-            value=classpath_value,
-            confidence=Confidence.high if fixture_type != "General Lighting Fixture" else Confidence.low,
-            source=Source.inferred,
-            rationale=(
-                f"Matched keywords in the description to '{fixture_type}'."
-                if fixture_type != "General Lighting Fixture"
-                else "No fixture-type or bulb-shape keywords matched; defaulted to a general classpath."
-            ),
-        )
-
-        light_source_attr = _extract_light_source(raw.part_desc, fixture_type)
-        fixture_type_attr = Attribute(
-            label="Fixture Type",
-            value=fixture_type,
-            confidence=classpath.confidence,
-            source=Source.inferred,
-            rationale=classpath.rationale,
-            lov_compliant=is_lov_compliant("Fixture Type", fixture_type),
-        )
-
-        mounting_value = None
-        if is_bulb:
-            attributes = [
-                fixture_type_attr,
-                _extract_bulb_shape(raw.part_desc),
-                _extract_base_type(raw.part_desc),
-                light_source_attr,
-            ]
-            pack_attr = _extract_pack_qty(raw.part_desc)
-            if pack_attr:
-                attributes.append(pack_attr)
-        else:
-            finish_attr = _extract_finish(raw.mfg_part_num, raw.part_desc)
-            mounting_value = MOUNTING_BY_FIXTURE.get(fixture_type, "Surface Mount")
-            mounting_attr = Attribute(
+    if is_bulb:
+        attributes = [
+            type_attr,
+            _extract_bulb_shape(part_desc),
+            _extract_base_type(part_desc),
+            light_source_attr,
+        ]
+        pack_attr = _extract_pack_qty(part_desc)
+        if pack_attr:
+            attributes.append(pack_attr)
+    else:
+        mounting_value = MOUNTING_BY_FIXTURE.get(item_type, "Surface Mount")
+        attributes = [
+            type_attr,
+            _extract_finish(mfg_part_num, part_desc),
+            Attribute(
                 label="Mounting Type",
                 value=mounting_value,
                 confidence=Confidence.medium,
                 source=Source.inferred,
-                rationale=f"Inferred from fixture type ('{fixture_type}').",
+                rationale=f"Inferred from fixture type ('{item_type}').",
                 lov_compliant=is_lov_compliant("Mounting Type", mounting_value),
-            )
-            attributes = [fixture_type_attr, finish_attr, mounting_attr, light_source_attr]
+            ),
+            light_source_attr,
+        ]
 
-        for extractor in (_extract_cct, _extract_wattage, _extract_luminous_output, _extract_dimension):
-            attr = extractor(raw.part_desc)
-            if attr:
-                attributes.append(attr)
+    for extractor in (_extract_cct, _extract_wattage, _extract_luminous_output, _extract_dimension):
+        attr = extractor(part_desc)
+        if attr:
+            attributes.append(attr)
 
-        invoice_desc, mobile_desc, short_desc, long_desc = _build_descriptions(
-            manufacturer_name.value,
-            brand_name.value,
-            fixture_type,
-            mounting_value,
-            raw.mfg_part_num,
-            attributes,
+    return attributes
+
+
+def resolve_manufacturer_and_brand(raw: RawProductIn) -> tuple[EnrichedField, EnrichedField, str]:
+    """Category-agnostic — every product goes through this."""
+    clean_mfr = clean_manufacturer_name(raw.part_manuf)
+    trade = trade_name(clean_mfr) or clean_mfr
+
+    manufacturer_name = EnrichedField(
+        value=clean_mfr,
+        confidence=Confidence.high,
+        source=Source.input,
+        rationale="Cleaned from Part_Manuf (stripped the trailing manufacturer code).",
+    )
+
+    if is_placeholder(raw.e1_brand):
+        brand_name = EnrichedField(
+            value=trade,
+            confidence=Confidence.medium,
+            source=Source.inferred,
+            rationale="E1_Brand was a placeholder ('-- Unbranded --'); used the manufacturer's trade name instead, per the brief's own rule.",
+        )
+    else:
+        brand_name = EnrichedField(
+            value=raw.e1_brand or "",
+            confidence=Confidence.high,
+            source=Source.input,
+            rationale="Taken directly from E1_Brand.",
         )
 
-        return EnrichedProduct(
-            raw_mfg_part_num=raw.mfg_part_num,
-            raw_part_desc=raw.part_desc,
-            raw_part_manuf=raw.part_manuf,
-            manufacturer_name=manufacturer_name,
-            brand_name=brand_name,
-            classpath=classpath,
-            invoice_desc=invoice_desc,
-            mobile_desc=mobile_desc,
-            short_desc=short_desc,
-            long_desc=long_desc,
-            attributes=attributes,
-        )
+    return manufacturer_name, brand_name, trade
+
+
+def build_descriptions(
+    manufacturer_name: str,
+    brand: str,
+    item_type: str,
+    mpn: str,
+    attributes: list[Attribute],
+):
+    """Description formulas are category-agnostic — the worked example's
+    shapes hold whether the noun is 'Wall Sconce' or 'Dishwasher'."""
+    mounting = next(
+        (a.value for a in attributes if a.label == "Mounting Type" and a.value != "Not specified"),
+        None,
+    )
+    return _build_descriptions(manufacturer_name, brand, item_type, mounting, mpn, attributes)

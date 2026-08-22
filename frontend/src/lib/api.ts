@@ -52,6 +52,23 @@ export const api = {
   createProductsBatch: (raws: RawProductIn[]) =>
     request<EnrichedProduct[]>("/products/batch", { method: "POST", body: JSON.stringify(raws) }),
   seedProducts: () => request<EnrichedProduct[]>("/products/seed", { method: "POST" }),
+  uploadCatalog: async (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    // No Content-Type header — the browser must set the multipart boundary.
+    const res = await fetch("/api/products/upload", { method: "POST", body });
+    if (!res.ok) {
+      const text = await res.text();
+      let detail: unknown;
+      try {
+        detail = (JSON.parse(text) as { detail?: unknown }).detail;
+      } catch {
+        /* not JSON */
+      }
+      throw new ApiError(res.status, detail, `${res.status} ${res.statusText}: ${text}`);
+    }
+    return res.json() as Promise<{ imported: number; filename: string }>;
+  },
   patchProduct: (id: number, patch: ProductPatch) =>
     request<EnrichedProduct>(`/products/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   exportUrl: (format: "csv" | "json", sort?: SortState) => {

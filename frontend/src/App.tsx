@@ -91,6 +91,25 @@ function App() {
     }
   };
 
+  const importCatalog = async (file: File) => {
+    setBusy(true);
+    setSeeding(true);
+    const pollId = window.setInterval(() => {
+      api.listProducts().then(setProducts).catch(() => {});
+    }, 1500);
+    try {
+      await api.uploadCatalog(file);
+      await loadProducts();
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      window.clearInterval(pollId);
+      setSeeding(false);
+      setBusy(false);
+    }
+  };
+
   const createSingle = async (raw: RawProductIn) => {
     setBusy(true);
     try {
@@ -151,6 +170,7 @@ function App() {
           onSeed={seed}
           onAdd={() => setView({ name: "add" })}
           onExport={exportCatalog}
+          onImport={importCatalog}
         />
       )}
 

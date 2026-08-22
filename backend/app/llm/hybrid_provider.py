@@ -1,59 +1,55 @@
-"""Hybrid enrichment: the deterministic pipeline (LightingEnrichmentProvider)
-does structured, auditable extraction — finish codes, dimensions, wattage,
-CCT all come straight from the text via regex, which is more reliable and
-more auditable than asking a model to read them off. A real LLM (local
-Ollama by default, or Gemini — see app/llm/llm_client.py) is layered on top
-for the two things a rules engine is genuinely bad at:
+"""The enrichment orchestrator.
 
-1. Classification when the keyword classifier finds nothing (low
-   confidence) — a real judgment call from the raw text.
-2. Writing the long description as fluent prose grounded *only* in the
-   attributes already extracted and validated, instead of comma-joining
-   them — matching how Unilog's own worked example actually reads.
+Routing, per row:
 
-Every LLM-touched field is tagged source=llm (not source=inferred) so the
-review UI shows exactly which fields came from the rule engine vs. a model
-call. If the LLM backend isn't reachable, enrich() falls back to the pure
-deterministic result and adds a visible info flag — the app must keep
-working either way.
+  1. Manufacturer / brand normalisation — deterministic, every category.
+  2. Classification — the lighting specialist gets first refusal; anything
+     it does not positively recognise goes to the model, which can classify
+     an open catalogue (dishwasher, faucet, fitting, bolt) the way a fixed
+     keyword table never could.
+  3. Attributes — specialist extractors for recognised lighting rows (finish
+     codes in MPN suffixes, ANSI bulb shapes, CCT); model extraction,
+     verified against the source text, for everything else.
+  4. Descriptions, UOM normalisation, character limits, validation —
+     deterministic, every category.
+
+So depth where a category is specified, and correct-if-shallower behaviour
+everywhere else. Nothing silently mislabels.
 """
 
 from __future__ import annotations
 
-from app.llm.lighting_provider import FIXTURE_TYPE_CLASSPATH, LAMP_LABELS, LightingEnrichmentProvider
-from app.llm.llm_client import LLM_BACKEND, LLMUnavailable, MODEL_NAME, generate_json, is_available
-from app.models import Confidence, EnrichedField, EnrichedProduct, RawProductIn, Severity, Source, ValidationFlag
-from app.reference.lighting_lov import FIXTURE_TYPE_LOV, is_lov_compliant
-
-CLASSIFY_SYSTEM = (
-    "You classify industrial lighting catalog rows into a fixed set of product types. "
-    "Respond with strict JSON only, no commentary."
+from app.llm.base import EnrichmentProvider
+from app.llm.generic_enrichment import llm_classify, llm_extract_attributes
+from app.llm.lighting_provider import (
+    build_descriptions,
+    classify_lighting,
+    extract_lighting_attributes,
+    resolve_manufacturer_and_brand,
 )
+from app.llm.llm_client import LLM_BACKEND, LLMUnavailable, MODEL_NAME, generate_json, is_available
+from app.models import (
+    Attribute,
+    Confidence,
+    EnrichedField,
+    EnrichedProduct,
+    RawProductIn,
+    Severity,
+    Source,
+    ValidationFlag,
+)
+
 DESCRIBE_SYSTEM = (
-    "You write short, factual product copy for an industrial-commerce catalog listing. "
+    "You write short, factual product copy for an industrial-commerce catalogue listing. "
     "Use only the facts you are given — never invent a specification, dimension, or feature "
     "that isn't listed. Respond with strict JSON only, no commentary."
 )
 
 
-def _llm_classify(raw: RawProductIn) -> str | None:
-    candidates = sorted(FIXTURE_TYPE_LOV)
-    prompt = (
-        f"Raw catalog description: {raw.part_desc!r}\n"
-        f"Manufacturer: {raw.part_manuf!r}\n"
-        f"Pick the single best product type from this exact list, copied verbatim: {candidates}\n"
-        'Respond as JSON: {"fixture_type": "<one value from the list>"}'
-    )
-    try:
-        result = generate_json(prompt, system=CLASSIFY_SYSTEM)
-    except LLMUnavailable:
-        return None
-    value = result.get("fixture_type")
-    return value if value in FIXTURE_TYPE_LOV else None
-
-
-def _llm_ground_long_desc(product: EnrichedProduct) -> str | None:
+def _llm_long_desc(product: EnrichedProduct) -> str | None:
     facts = {"Manufacturer": product.manufacturer_name.value, "Brand": product.brand_name.value}
+    if product.item_type:
+        facts["Item Type"] = product.item_type
     for a in product.attributes:
         if a.value and a.value != "Not specified":
             facts[a.label] = f"{a.value} {a.uom}".strip() if a.uom else a.value
@@ -61,7 +57,7 @@ def _llm_ground_long_desc(product: EnrichedProduct) -> str | None:
 
     prompt = (
         f"Facts: {facts_line}\n"
-        "Write ONE fluent sentence describing this product for a catalog listing, using ONLY "
+        "Write ONE fluent sentence describing this product for a catalogue listing, using ONLY "
         "the facts above.\n"
         'Respond as JSON: {"long_desc": "..."}'
     )
@@ -75,11 +71,113 @@ def _llm_ground_long_desc(product: EnrichedProduct) -> str | None:
     return value.strip()
 
 
-class HybridEnrichmentProvider(LightingEnrichmentProvider):
+class HybridEnrichmentProvider(EnrichmentProvider):
     def enrich(self, raw: RawProductIn) -> EnrichedProduct:
-        product = super().enrich(raw)
+        flags: list[ValidationFlag] = []
+        manufacturer_name, brand_name, trade = resolve_manufacturer_and_brand(raw)
 
-        if not is_available():
+        # --- 2. classification -----------------------------------------
+        lighting = classify_lighting(raw.part_desc, trade)
+        llm_up = is_available()
+
+        if lighting is not None:
+            item_type, classpath_value, is_bulb = lighting
+            classpath = EnrichedField(
+                value=classpath_value,
+                confidence=Confidence.high,
+                source=Source.inferred,
+                rationale=f"Matched lighting keywords in the description to '{item_type}'.",
+            )
+            attributes = extract_lighting_attributes(raw.mfg_part_num, raw.part_desc, item_type, is_bulb)
+        else:
+            classified = llm_classify(raw.part_desc, raw.part_manuf) if llm_up else None
+            if classified:
+                item_type = classified["item_type"]
+                classpath_value = f"{classified['dept']} > {classified['class']} > {classified['fine']}"
+                classpath = EnrichedField(
+                    value=classpath_value,
+                    confidence=Confidence.medium,
+                    source=Source.llm,
+                    rationale=(
+                        f"No specialist category matched, so {MODEL_NAME} ({LLM_BACKEND}) classified "
+                        "the row from its raw description."
+                    ),
+                )
+                attributes = llm_extract_attributes(raw.part_desc, item_type, raw.mfg_part_num)
+            else:
+                # Neither a specialist match nor a reachable model: say so
+                # rather than guessing a category.
+                item_type = ""
+                classpath = EnrichedField(
+                    value="Unclassified",
+                    confidence=Confidence.low,
+                    source=Source.inferred,
+                    rationale=(
+                        "No specialist category matched and the model was unreachable — "
+                        "this row needs a human to classify it."
+                    ),
+                )
+                attributes = []
+                flags.append(
+                    ValidationFlag(
+                        field="classpath",
+                        issue=f"Could not classify — {LLM_BACKEND} unreachable and no rule matched.",
+                        severity=Severity.error,
+                    )
+                )
+
+        # --- 4. descriptions -------------------------------------------
+        noun = item_type or "Product"
+        invoice_desc, mobile_desc, short_desc, long_desc = build_descriptions(
+            manufacturer_name.value, brand_name.value, noun, raw.mfg_part_num, attributes
+        )
+
+        product = EnrichedProduct(
+            raw_mfg_part_num=raw.mfg_part_num,
+            raw_part_desc=raw.part_desc,
+            raw_part_manuf=raw.part_manuf,
+            raw_e1_brand=raw.e1_brand,
+            raw_unilog_brand=raw.unilog_brand,
+            raw_dib_brand=raw.dib_brand,
+            manufacturer_name=manufacturer_name,
+            brand_name=brand_name,
+            classpath=classpath,
+            item_type=item_type,
+            invoice_desc=invoice_desc,
+            mobile_desc=mobile_desc,
+            short_desc=short_desc,
+            long_desc=long_desc,
+            attributes=attributes,
+            features=[
+                f"{a.label}: {a.value} {a.uom}".strip() if a.uom else f"{a.label}: {a.value}"
+                for a in attributes
+                if a.value and a.value != "Not specified"
+            ][:20],
+            validation_flags=flags,
+        )
+
+        # --- grounded long description ---------------------------------
+        if llm_up:
+            grounded = _llm_long_desc(product)
+            if grounded:
+                product.long_desc = EnrichedField(
+                    value=grounded,
+                    confidence=Confidence.medium,
+                    source=Source.llm,
+                    rationale=(
+                        f"Written by {MODEL_NAME} ({LLM_BACKEND}), grounded strictly in the "
+                        "already-extracted attributes above."
+                    ),
+                )
+            else:
+                product.validation_flags.append(
+                    ValidationFlag(
+                        field="llm",
+                        issue=f"Call to {LLM_BACKEND} failed for this item — used the rule-based description instead.",
+                        severity=Severity.info,
+                    )
+                )
+        else:
             product.validation_flags.append(
                 ValidationFlag(
                     field="llm",
@@ -87,56 +185,5 @@ class HybridEnrichmentProvider(LightingEnrichmentProvider):
                     severity=Severity.info,
                 )
             )
-            return product
-
-        if product.classpath.confidence == Confidence.low:
-            self._apply_llm_classification(raw, product)
-
-        long_desc_ok = self._apply_llm_long_desc(product)
-        if not long_desc_ok:
-            product.validation_flags.append(
-                ValidationFlag(
-                    field="llm",
-                    issue=f"Call to {LLM_BACKEND} failed for this item — used the rule-based description instead.",
-                    severity=Severity.info,
-                )
-            )
 
         return product
-
-    def _apply_llm_classification(self, raw: RawProductIn, product: EnrichedProduct) -> None:
-        llm_type = _llm_classify(raw)
-        if not llm_type:
-            return
-
-        fixture_attr = next((a for a in product.attributes if a.label == "Fixture Type"), None)
-        if fixture_attr:
-            fixture_attr.value = llm_type
-            fixture_attr.confidence = Confidence.medium
-            fixture_attr.source = Source.llm
-            fixture_attr.rationale = (
-                f"Classified by {MODEL_NAME} ({LLM_BACKEND}) — the rule-based classifier "
-                "found no keyword match in the description."
-            )
-            fixture_attr.lov_compliant = is_lov_compliant("Fixture Type", llm_type)
-
-        product.classpath = EnrichedField(
-            value=FIXTURE_TYPE_CLASSPATH.get(llm_type, product.classpath.value),
-            confidence=Confidence.medium,
-            source=Source.llm,
-            rationale=f"Classified by {MODEL_NAME} ({LLM_BACKEND}) from the raw description.",
-        )
-        if llm_type in LAMP_LABELS:
-            product.attributes = [a for a in product.attributes if a.label not in ("Finish", "Mounting Type")]
-
-    def _apply_llm_long_desc(self, product: EnrichedProduct) -> bool:
-        grounded = _llm_ground_long_desc(product)
-        if not grounded:
-            return False
-        product.long_desc = EnrichedField(
-            value=grounded,
-            confidence=Confidence.medium,
-            source=Source.llm,
-            rationale=f"Written by {MODEL_NAME} ({LLM_BACKEND}), grounded strictly in the already-extracted attributes above.",
-        )
-        return True

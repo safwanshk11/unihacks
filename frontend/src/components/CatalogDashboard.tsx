@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Confidence, EnrichedProduct, Metrics, SortColumn, SortState } from "../types/product";
 import { ConfidenceMeter } from "./ConfidenceMeter";
 import { Hero } from "./Hero";
@@ -182,6 +182,7 @@ export function CatalogDashboard({
   onSeed,
   onAdd,
   onExport,
+  onImport,
 }: {
   products: EnrichedProduct[];
   metrics: Metrics | null;
@@ -191,8 +192,10 @@ export function CatalogDashboard({
   onSeed: () => void;
   onAdd: () => void;
   onExport: (format: "csv" | "json", sort: SortState) => void;
+  onImport: (file: File) => void;
 }) {
   const [sort, setSort] = useState<SortState>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const toggleSort = (column: SortColumn) => {
     setSort((prev) => {
@@ -226,6 +229,24 @@ export function CatalogDashboard({
           </p>
         </div>
         <div className="flex gap-2.5">
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".csv,.xlsx,.xlsm"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onImport(f);
+              e.target.value = "";
+            }}
+          />
+          <ActionButton
+            onClick={() => fileInput.current?.click()}
+            disabled={seeding}
+            title="Enrich your own catalogue (.csv or .xlsx)"
+          >
+            Import file
+          </ActionButton>
           <ActionButton onClick={onAdd} disabled={seeding}>
             Add product
           </ActionButton>
