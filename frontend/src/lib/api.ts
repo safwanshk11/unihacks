@@ -1,4 +1,4 @@
-import type { EnrichedProduct, Metrics, ProductPatch, RawProductIn, SortState } from "../types/product";
+import type { EnrichedProduct, Evaluation, Metrics, ProductPatch, RawProductIn, SortState } from "../types/product";
 
 export type SeedInProgressDetail = { message: string; done: number; total: number };
 
@@ -26,10 +26,25 @@ export function isSeedInProgressDetail(detail: unknown): detail is SeedInProgres
   );
 }
 
+// Session token lives in sessionStorage, not localStorage: it should not
+// outlive the browser tab for a console holding unpublished content.
+const TOKEN_KEY = "lumen.session";
+
+export const session = {
+  get: () => sessionStorage.getItem(TOKEN_KEY),
+  set: (token: string) => sessionStorage.setItem(TOKEN_KEY, token),
+  clear: () => sessionStorage.removeItem(TOKEN_KEY),
+};
+
+export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const token = session.get();
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...init,
+    headers: authHeaders({ "Content-Type": "application/json", ...(init?.headers as Record<string, string>) }),
   });
   if (!res.ok) {
     const body = await res.text();
@@ -56,7 +71,7 @@ export const api = {
     const body = new FormData();
     body.append("file", file);
     // No Content-Type header — the browser must set the multipart boundary.
-    const res = await fetch("/api/products/upload", { method: "POST", body });
+    const res = await fetch("/api/products/upload", { method: "POST", body, headers: authHeaders() });
     if (!res.ok) {
       const text = await res.text();
       let detail: unknown;
@@ -71,13 +86,49 @@ export const api = {
   },
   patchProduct: (id: number, patch: ProductPatch) =>
     request<EnrichedProduct>(`/products/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
-  exportUrl: (format: "csv" | "json", sort?: SortState) => {
+  downloadExport: async (format: "csv" | "json", sort?: SortState) => {
     const params = new URLSearchParams({ format });
     if (sort) {
       params.set("sort", sort.column);
       params.set("direction", sort.direction);
     }
-    return `/api/products/export?${params.toString()}`;
+    // Navigating the window would drop the Authorization header, so fetch
+    // the file and hand the browser a blob instead.
+    const res = await fetch(`/api/products/export?${params.toString()}`, { headers: authHeaders() });
+    if (!res.ok) throw new ApiError(res.status, undefined, `Export failed: ${res.status} ${res.statusText}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = format === "csv" ? "unilog_delivery_format.csv" : "lumen_export.json";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   },
   getMetrics: () => request<Metrics>("/metrics"),
+
+  login: (username: string, password: string) =>
+    request<{ token: string; username: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  me: () => request<{ username: string }>("/auth/me"),
+
+  evaluate: async (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    const res = await fetch("/api/products/evaluate", { method: "POST", body, headers: authHeaders() });
+    if (!res.ok) {
+      const text = await res.text();
+      let detail: unknown;
+      try {
+        detail = (JSON.parse(text) as { detail?: unknown }).detail;
+      } catch {
+        /* not JSON */
+      }
+      throw new ApiError(res.status, detail, `${res.status} ${res.statusText}: ${text}`);
+    }
+    return res.json() as Promise<Evaluation>;
+  },
 };

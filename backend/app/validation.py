@@ -22,13 +22,29 @@ def validate(product: EnrichedProduct) -> list[ValidationFlag]:
             )
         )
 
+    # Over-length and under-length are not the same problem. Exceeding the
+    # ceiling truncates in the storefront, so it is a warning. Falling short
+    # means the raw row simply did not carry enough attributes to fill the
+    # line — worth noting, but not a data error, and not grounds to hold the
+    # record back from auto-approval.
     mobile_len = len(product.mobile_desc.value)
-    if not (MOBILE_DESC_RANGE[0] <= mobile_len <= MOBILE_DESC_RANGE[1]):
+    if mobile_len > MOBILE_DESC_RANGE[1]:
         flags.append(
             ValidationFlag(
                 field="mobile_desc",
-                issue=f"Outside the {MOBILE_DESC_RANGE[0]}-{MOBILE_DESC_RANGE[1]} character target ({mobile_len} chars).",
+                issue=f"Exceeds the {MOBILE_DESC_RANGE[1]}-character target ({mobile_len} chars) and will truncate.",
                 severity=Severity.warning,
+            )
+        )
+    elif mobile_len < MOBILE_DESC_RANGE[0]:
+        flags.append(
+            ValidationFlag(
+                field="mobile_desc",
+                issue=(
+                    f"Short of the {MOBILE_DESC_RANGE[0]}-character target ({mobile_len} chars) — "
+                    "the input carried too few attributes to fill it."
+                ),
+                severity=Severity.info,
             )
         )
 

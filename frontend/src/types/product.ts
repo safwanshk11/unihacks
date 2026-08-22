@@ -107,3 +107,22 @@ export interface Metrics {
     llm_unreachable_count: number;
   };
 }
+
+export interface Evaluation {
+  rows_scored: number;
+  rows_in_ground_truth: number;
+  overall: { fields_compared: number; exact_pct: number; any_match_pct: number };
+  by_field: Record<
+    string,
+    { compared: number; exact_pct: number; any_match_pct: number; examples: { mpn: string; expected: string; got: string }[] }
+  >;
+  char_limit_compliance: Record<string, { within_limit: number; of: number; pct: number }>;
+  attainable_ceiling: {
+    ground_truth_attributes: number;
+    present_in_raw_input: number;
+    requires_manufacturer_source: number;
+    reachable_pct: number;
+    note: string;
+    examples_requiring_external_source: string[];
+  };
+}

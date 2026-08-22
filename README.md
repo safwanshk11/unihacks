@@ -58,7 +58,7 @@ exact file-by-file breakdown and what would replace each placeholder.
 
 ## Stack
 
-- **Backend**: Python, FastAPI, SQLite — see [backend/README.md](backend/README.md)
+- **Backend**: Python, FastAPI, SQLite, session auth — see [backend/README.md](backend/README.md)
 - **Frontend**: React, Vite, TypeScript, Tailwind CSS
 
 ## Run locally
@@ -88,8 +88,15 @@ npm install
 npm run dev -- --port 5174
 ```
 
-Open http://localhost:5174, click **Reseed from real data** to load the 211
-real lighting rows, then open one to see the enrichment pipeline in action.
+Open http://localhost:5174 and sign in — `admin` / `lumen-demo` by default,
+configurable in `backend/.env` (see
+[Login](backend/README.md#login); nothing is hardcoded in the repo).
+
+Then: **Reseed** loads the 211 real lighting rows, **Import file** takes your
+own `.csv`/`.xlsx` (try `backend/app/data/sample_mixed_categories.csv` to see
+non-lighting categories), **Export CSV** emits the 252-column Delivery
+Format, and **Accuracy → Score against ground truth** scores the output
+field by field.
 
 ## How enrichment works
 

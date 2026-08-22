@@ -3,8 +3,9 @@ import { AddProduct } from "./components/AddProduct";
 import { CatalogDashboard } from "./components/CatalogDashboard";
 import { Header } from "./components/Header";
 import { ProductReview } from "./components/ProductReview";
-import { ApiError, api, isSeedInProgressDetail } from "./lib/api";
-import type { EnrichedProduct, Metrics, ProductPatch, RawProductIn, SortState } from "./types/product";
+import { Login } from "./components/Login";
+import { ApiError, api, isSeedInProgressDetail, session } from "./lib/api";
+import type { EnrichedProduct, Evaluation, Metrics, ProductPatch, RawProductIn, SortState } from "./types/product";
 
 type View = { name: "dashboard" } | { name: "add" } | { name: "review"; id: number };
 
@@ -16,6 +17,9 @@ function App() {
   const [seeding, setSeeding] = useState(false);
   const [view, setView] = useState<View>({ name: "dashboard" });
   const [error, setError] = useState<string | null>(null);
+  const [authed, setAuthed] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
 
   const loadMetrics = async () => {
     try {
@@ -38,9 +42,49 @@ function App() {
     await loadMetrics();
   };
 
+  // Resume an existing tab session rather than forcing a re-login on reload.
   useEffect(() => {
-    loadProducts();
+    if (!session.get()) {
+      setCheckingAuth(false);
+      return;
+    }
+    api
+      .me()
+      .then(() => setAuthed(true))
+      .catch(() => session.clear())
+      .finally(() => setCheckingAuth(false));
   }, []);
+
+  useEffect(() => {
+    if (authed) loadProducts();
+  }, [authed]);
+
+  const signIn = async (username: string, password: string) => {
+    const { token } = await api.login(username, password);
+    session.set(token);
+    setAuthed(true);
+  };
+
+  const signOut = () => {
+    session.clear();
+    setAuthed(false);
+    setProducts([]);
+    setMetrics(null);
+    setEvaluation(null);
+    setView({ name: "dashboard" });
+  };
+
+  const runEvaluation = async (file: File) => {
+    setBusy(true);
+    try {
+      setEvaluation(await api.evaluate(file));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // If a reseed is already running elsewhere (another tab, or this one
   // after a reload) the backend rejects a second POST with a 409 that
@@ -137,14 +181,17 @@ function App() {
   };
 
   const exportCatalog = (format: "csv" | "json", sort: SortState) => {
-    window.location.href = api.exportUrl(format, sort);
+    api.downloadExport(format, sort).catch((e) => setError(e instanceof Error ? e.message : String(e)));
   };
 
   const reviewProduct = view.name === "review" ? products.find((p) => p.id === view.id) : undefined;
 
+  if (checkingAuth) return <div className="min-h-screen" />;
+  if (!authed) return <Login onSignIn={signIn} />;
+
   return (
     <div className="min-h-screen">
-      <Header onHome={() => setView({ name: "dashboard" })} model={metrics?.llm?.model} />
+      <Header onHome={() => setView({ name: "dashboard" })} model={metrics?.llm?.model} onSignOut={signOut} />
 
       {error && (
         <div
@@ -171,6 +218,8 @@ function App() {
           onAdd={() => setView({ name: "add" })}
           onExport={exportCatalog}
           onImport={importCatalog}
+          onEvaluate={runEvaluation}
+          evaluation={evaluation}
         />
       )}
 

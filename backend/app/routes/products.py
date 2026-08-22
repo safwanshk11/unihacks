@@ -1,9 +1,10 @@
 import io
 import threading
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from app.auth import require_session
 from app.dedup import find_exact_duplicate_mpns, find_near_duplicate_titles
 from app.ingest import IngestError, parse_catalog
 from app.llm.factory import get_provider
@@ -68,17 +69,17 @@ def _enrich_batch(raws: list[RawProductIn]):
 
 
 @router.post("")
-def create_product(raw: RawProductIn):
+def create_product(raw: RawProductIn, _: str = Depends(require_session)):
     return _enrich_batch([raw])[0]
 
 
 @router.post("/batch")
-def create_products_batch(raws: list[RawProductIn]):
+def create_products_batch(raws: list[RawProductIn], _: str = Depends(require_session)):
     return _enrich_batch(raws)
 
 
 @router.post("/seed")
-def seed_products():
+def seed_products(_: str = Depends(require_session)):
     if not _seed_lock.acquire(blocking=False):
         # Someone else's reseed is already running (another tab, or this one
         # after a reload). While the lock is held, clear_products() has
@@ -102,12 +103,12 @@ def seed_products():
 
 
 @router.get("")
-def get_products():
+def get_products(_: str = Depends(require_session)):
     return list_products()
 
 
 @router.post("/upload")
-async def upload_catalog(file: UploadFile = File(...)):
+async def upload_catalog(file: UploadFile = File(...), _: str = Depends(require_session)):
     """Ingest a raw catalogue (CSV or XLSX) and enrich every row.
 
     This is the path the evaluation dataset takes — the pipeline is not
@@ -133,7 +134,7 @@ async def upload_catalog(file: UploadFile = File(...)):
 
 
 @router.post("/evaluate")
-async def evaluate_against_ground_truth(file: UploadFile = File(...)):
+async def evaluate_against_ground_truth(file: UploadFile = File(...), _: str = Depends(require_session)):
     """Score the enriched catalogue against a known-good Delivery Format
     file — the accuracy metric the brief says judges will look for.
 
@@ -170,7 +171,7 @@ def export_products(format: str = "csv", sort: str | None = None, direction: str
 
 
 @router.get("/{product_id}")
-def get_product_detail(product_id: int):
+def get_product_detail(product_id: int, _: str = Depends(require_session)):
     product = get_product(product_id)
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -178,7 +179,7 @@ def get_product_detail(product_id: int):
 
 
 @router.patch("/{product_id}")
-def patch_product(product_id: int, patch: ProductPatch):
+def patch_product(product_id: int, patch: ProductPatch, _: str = Depends(require_session)):
     product = get_product(product_id)
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")

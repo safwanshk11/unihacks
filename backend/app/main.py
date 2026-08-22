@@ -6,6 +6,7 @@ load_dotenv()  # must run before anything imports app.llm.llm_client, which read
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
+from app.routes.auth import router as auth_router  # noqa: E402
 from app.routes.metrics import router as metrics_router  # noqa: E402
 from app.routes.products import router as products_router  # noqa: E402
 from app.store import init_db  # noqa: E402
@@ -19,6 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(products_router)
 app.include_router(metrics_router)
 

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
-import type { Confidence, EnrichedProduct, Metrics, SortColumn, SortState } from "../types/product";
+import type { Confidence, EnrichedProduct, Evaluation, Metrics, SortColumn, SortState } from "../types/product";
 import { ConfidenceMeter } from "./ConfidenceMeter";
+import { EvaluationPanel } from "./EvaluationPanel";
 import { Hero } from "./Hero";
 import { StampBadge } from "./StampBadge";
 
@@ -183,6 +184,8 @@ export function CatalogDashboard({
   onAdd,
   onExport,
   onImport,
+  onEvaluate,
+  evaluation,
 }: {
   products: EnrichedProduct[];
   metrics: Metrics | null;
@@ -193,6 +196,8 @@ export function CatalogDashboard({
   onAdd: () => void;
   onExport: (format: "csv" | "json", sort: SortState) => void;
   onImport: (file: File) => void;
+  onEvaluate: (file: File) => void;
+  evaluation: Evaluation | null;
 }) {
   const [sort, setSort] = useState<SortState>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -348,6 +353,8 @@ export function CatalogDashboard({
           </tbody>
         </table>
       </div>
+
+      <EvaluationPanel evaluation={evaluation} onEvaluate={onEvaluate} busy={seeding} />
     </div>
   );
 }

@@ -5,8 +5,9 @@ can actually measure without that file: internal pipeline confidence and
 compliance, not correctness against a known-good answer.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.auth import require_session
 from app.llm.llm_client import LLM_BACKEND, MODEL_NAME
 from app.routes.products import AUTO_APPROVE_FIELD
 from app.store import list_products
@@ -20,7 +21,7 @@ def _pct(numerator: int, denominator: int) -> float:
 
 
 @router.get("")
-def get_metrics():
+def get_metrics(_: str = Depends(require_session)):
     products = list_products()
     total = len(products)
     if total == 0:

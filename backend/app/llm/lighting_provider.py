@@ -502,21 +502,31 @@ def _build_descriptions(
     # worked example — real listings pad this out with marketing copy we
     # don't have, so this is an honest best-effort, not a guarantee.
     descriptors = [v for v in [finish_value, mounting] if v] + [_attr_display(a) for a in extra]
-    # Ground truth writes "Whirlpool, Dishwasher, …" — one name, not the
-    # manufacturer and brand repeated. Ours read "Appliance Dealers
-    # Cooperative Appliance Dealers Cooperative, …" whenever they matched.
-    lead = brand if _same_name(manufacturer_name, brand) else f"{manufacturer_name} {brand}"
-    mobile_base = f"{lead}, {fixture_type}"
-    used: list[str] = []
-    mobile_text = f"{mobile_base}, {mpn}"
-    for d in descriptors:
-        candidate = f"{mobile_base}, {', '.join(used + [d])}, {mpn}"
-        if len(mobile_text) >= 60 and len(candidate) > 80:
-            break
-        used.append(d)
-        mobile_text = candidate
-        if len(mobile_text) >= 60:
-            break
+
+    def compose(lead: str) -> str:
+        base = f"{lead}, {fixture_type}"
+        used: list[str] = []
+        text = f"{base}, {mpn}"
+        for d in descriptors:
+            candidate = f"{base}, {', '.join(used + [d])}, {mpn}"
+            if len(text) >= 60 and len(candidate) > 80:
+                break
+            used.append(d)
+            text = candidate
+            if len(text) >= 60:
+                break
+        return text
+
+    # Ground truth uses both "Whirlpool, Dishwasher, …" and "Rheem
+    # Manufacturing FRIGIDAIRE, Dishwasher, …" — the second only because
+    # those two names are genuinely different companies. Where they overlap
+    # it prints the name once and reaches length with *attributes*.
+    #
+    # So: never repeat an overlapping name to pad. A row whose input lacks
+    # enough attributes to reach 60 stays short and is flagged, which is the
+    # honest outcome — "Streamlight Streamlight" would read worse than a
+    # short line and would be padding, not information.
+    mobile_text = compose(brand if _same_name(manufacturer_name, brand) else f"{manufacturer_name} {brand}")
     mobile_desc = EnrichedField(
         value=mobile_text[:80],
         confidence=Confidence.medium,

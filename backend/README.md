@@ -63,6 +63,33 @@ validation flag saying so, rather than failing the request. Rows the specialist 
 model; rows that need the generic lane will be flagged for a human instead
 of guessed at.
 
+## Login
+
+The console sits behind a session login. It is small but not decorative:
+passwords are compared against a PBKDF2-SHA256 hash in constant time,
+session tokens are HMAC-signed with a 12-hour expiry, and **no credential
+is committed** — everything comes from `backend/.env` (gitignored).
+
+```
+AUTH_USERNAME=admin
+AUTH_PASSWORD=lumen-demo     # change this before sharing
+AUTH_SECRET=                 # random per process if unset; sessions end on restart
+AUTH_DISABLED=0              # set 1 to bypass login for scripted runs
+```
+
+Every data route requires a valid session, including reads. The token lives
+in `sessionStorage`, not `localStorage`, so it does not outlive the tab —
+this console holds unpublished catalogue content.
+
+## Scoring accuracy
+
+`POST /api/products/evaluate` takes a known-good Delivery Format CSV and
+returns field-level accuracy, joined on part number. The UI exposes it as
+**Accuracy → Score against ground truth**. See `app/scoring.py`; it reports
+an attainable-ceiling analysis alongside the raw score, because a bare
+percentage invites the wrong conclusion when most of the ground truth was
+never present in the input.
+
 ## The data
 
 `app/data/lighting_input.csv` — 211 rows filtered from Unilog's real
