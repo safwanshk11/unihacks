@@ -1,34 +1,48 @@
 @import "tailwindcss";
 
 /*
-  Lumen — a photometric spec sheet, not a UI kit.
+  Lumen — a lighting designer's desk.
 
-  The whole page is monochrome except for ONE chromatic value: filament
-  amber. It is reserved exclusively for "a human needs to look at this."
-  Anything the pipeline resolved on its own stays grayscale. That constraint
-  is what makes the review queue readable at a glance across 211 rows —
-  the eye goes straight to the warm marks and nowhere else.
+  The subject is light, so light is the material: a warm pool of lamp glow
+  sits behind the page, surfaces are lifted with warm-tinted shadows (never
+  gray — gray shadows read as unlit), and the correlated-colour-temperature
+  spectrum that every lighting spec sheet prints (2700K tungsten → 6500K
+  daylight) runs as a real structural accent.
 
-  Source (input / rule / llm) is deliberately NOT encoded in hue — it's
-  encoded in ink weight, so it never competes with the signal color.
+  Colour discipline survives the richness: the CCT spectrum is STRUCTURAL
+  (rules, the meter, the hero). Data still speaks in one voice — burnt amber
+  means "a human needs to look at this", and nothing else earns it.
 */
 
 :root {
-  --paper: #fcfcfd;
-  --raised: #ffffff;
+  --paper: #fbfaf8;
+  --paper-lit: #fffefc;
+  --surface: #ffffff;
 
-  --ink: #0e0f13;
-  --ink-2: #43464e;
-  --ink-3: #83868e;
-  --ink-4: #aaadb4;
+  --ink: #17130f;
+  --ink-2: #4a423b;
+  --ink-3: #877c72;
+  --ink-4: #b3a99e;
 
-  --rule: #e6e6ea;
-  --rule-soft: #f0f0f3;
+  --rule: #e9e3db;
+  --rule-soft: #f3efe9;
 
-  /* The only chromatic value on the page. Tungsten at ~2700K. */
-  --signal: #9a5008;
-  --signal-mark: #e08c1c;
-  --signal-wash: #fcf5ea;
+  /* Correlated colour temperature — real Kelvin values, warm → cool. */
+  --k2700: #f0a63c;
+  --k3000: #f7c46a;
+  --k4000: #f2e6cd;
+  --k5000: #cfe0f0;
+  --k6500: #a6c6e8;
+
+  /* The one data colour. */
+  --signal: #a8530a;
+  --signal-mark: #e5891a;
+  --signal-wash: #fdf4e8;
+
+  --shadow-sm: 0 1px 2px rgba(72, 48, 22, 0.05), 0 1px 1px rgba(72, 48, 22, 0.03);
+  --shadow-md: 0 2px 4px rgba(72, 48, 22, 0.04), 0 10px 20px -6px rgba(72, 48, 22, 0.07);
+  --shadow-lg: 0 4px 10px rgba(72, 48, 22, 0.05), 0 20px 40px -12px rgba(72, 48, 22, 0.11);
+  --glow: 0 0 12px rgba(229, 137, 26, 0.35);
 
   --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
@@ -39,12 +53,31 @@ html {
 }
 
 body {
+  position: relative;
   background-color: var(--paper);
   color: var(--ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "cv11", "ss01";
+}
+
+/* The pool of lamp light the desk sits under. Fixed, so it reads as
+   ambient room light rather than a banner that scrolls away. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 620px;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(115% 78% at 50% -14%, rgba(240, 166, 60, 0.13) 0%, rgba(240, 166, 60, 0.045) 42%, transparent 72%),
+    radial-gradient(80% 60% at 82% 4%, rgba(166, 198, 232, 0.11) 0%, transparent 62%);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
 }
 
 .font-mono {
@@ -52,23 +85,99 @@ body {
   font-feature-settings: "tnum";
 }
 
-/* Tiny tracked-out uppercase label — the spec-sheet voice. */
 .eyebrow {
   font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1;
-  letter-spacing: 0.11em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-4);
 }
 
-/* Figures in the readout band: large, light, tabular. */
 .figure {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-weight: 400;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
 }
+
+/* The spectrum every lighting spec sheet prints. Structural accent. */
+.cct-rule {
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--k2700) 0%,
+    var(--k3000) 22%,
+    var(--k4000) 48%,
+    var(--k5000) 74%,
+    var(--k6500) 100%
+  );
+}
+
+.surface {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.lift {
+  transition: box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.lift:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes glowIn {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise {
+  animation: riseIn 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.rise-1 { animation-delay: 60ms; }
+.rise-2 { animation-delay: 130ms; }
+.rise-3 { animation-delay: 210ms; }
+
+.glow-in {
+  animation: glowIn 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Stagger only the rows a person actually sees on arrival — animating all
+   211 would cost far more than it conveys. */
+tbody tr:nth-child(-n + 12) {
+  animation: riseIn 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+tbody tr:nth-child(1) { animation-delay: 150ms; }
+tbody tr:nth-child(2) { animation-delay: 182ms; }
+tbody tr:nth-child(3) { animation-delay: 214ms; }
+tbody tr:nth-child(4) { animation-delay: 246ms; }
+tbody tr:nth-child(5) { animation-delay: 278ms; }
+tbody tr:nth-child(6) { animation-delay: 310ms; }
+tbody tr:nth-child(7) { animation-delay: 342ms; }
+tbody tr:nth-child(8) { animation-delay: 374ms; }
+tbody tr:nth-child(9) { animation-delay: 406ms; }
+tbody tr:nth-child(10) { animation-delay: 438ms; }
+tbody tr:nth-child(11) { animation-delay: 470ms; }
+tbody tr:nth-child(12) { animation-delay: 502ms; }
 
 button:focus-visible,
 a:focus-visible,
@@ -77,7 +186,7 @@ textarea:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
 input,
@@ -94,8 +203,10 @@ textarea::placeholder {
   *,
   *::before,
   *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
+    animation: none !important;
     transition-duration: 0.001ms !important;
+  }
+  .lift:hover {
+    transform: none;
   }
 }

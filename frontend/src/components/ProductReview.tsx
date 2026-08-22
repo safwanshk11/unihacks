@@ -93,11 +93,17 @@ export function ProductReview({
   const autoApproved = product.validation_flags.some((f) => f.field === "status");
   const openFlags = product.validation_flags.filter((f) => f.severity === "warning" || f.severity === "error");
 
-  const btn = "text-[13px] px-3 py-1.5 border transition-colors disabled:opacity-45 whitespace-nowrap";
-  const btnStyle = { borderColor: "var(--rule)", color: "var(--ink-2)", borderRadius: 3 };
+  const btn = "text-[13px] px-3.5 py-2 border transition-all disabled:opacity-45 whitespace-nowrap";
+  const btnStyle = {
+    borderColor: "var(--rule)",
+    backgroundColor: "var(--surface)",
+    color: "var(--ink-2)",
+    borderRadius: 7,
+    boxShadow: "var(--shadow-sm)",
+  };
 
   return (
-    <div className="max-w-[1080px] mx-auto px-8 pb-24">
+    <div className="max-w-[1120px] mx-auto px-8 pb-28">
       <div className="pt-8 pb-6 flex items-center justify-between gap-6">
         <button
           onClick={onBack}
@@ -114,7 +120,12 @@ export function ProductReview({
                 onClick={markReviewed}
                 disabled={saving}
                 className={btn}
-                style={{ ...btnStyle, borderColor: "var(--ink)", color: "var(--paper)", backgroundColor: "var(--ink)" }}
+                style={{
+                  ...btnStyle,
+                  borderColor: "var(--ink)",
+                  color: "var(--paper-lit)",
+                  backgroundColor: "var(--ink)",
+                }}
               >
                 Approve
               </button>
@@ -132,27 +143,30 @@ export function ProductReview({
         </div>
       </div>
 
-      <div className="border-t pt-8" style={{ borderColor: "var(--rule)" }}>
-        <h1 className="text-[26px] leading-[1.15] font-semibold tracking-[-0.03em] max-w-[42ch]">
+      <div className="pt-2">
+        <span className="cct-rule block w-16 rounded-full mb-6" />
+        <h1 className="text-[30px] leading-[1.14] font-semibold tracking-[-0.035em] max-w-[42ch]">
           {product.short_desc.value}
         </h1>
-        <p className="font-mono text-[11px] mt-2.5" style={{ color: "var(--ink-4)" }}>
-          {product.raw_mfg_part_num}
+        <p className="font-mono text-[11.5px] mt-3" style={{ color: "var(--ink-4)" }}>
+          {product.raw_mfg_part_num} · {product.classpath.value}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.1fr)] gap-10 lg:gap-16 mt-10">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.05fr)] gap-6 lg:gap-8 mt-10 items-start">
         {/* AS SUBMITTED — what the distributor actually sent */}
-        <div>
-          <div className="eyebrow pb-3 mb-5 border-b" style={{ borderColor: "var(--rule)" }}>
-            As submitted
+        <div className="flex flex-col gap-6 lg:sticky lg:top-[72px]">
+          <div className="surface p-6">
+            <div className="eyebrow pb-3 mb-5 border-b" style={{ borderColor: "var(--rule-soft)" }}>
+              As submitted
+            </div>
+            <RawField label="Mfg_Part_Num" value={product.raw_mfg_part_num} />
+            <RawField label="Part_Desc" value={product.raw_part_desc} />
+            <RawField label="Part_Manuf" value={product.raw_part_manuf} />
           </div>
-          <RawField label="Mfg_Part_Num" value={product.raw_mfg_part_num} />
-          <RawField label="Part_Desc" value={product.raw_part_desc} />
-          <RawField label="Part_Manuf" value={product.raw_part_manuf} />
 
-          <div className="mt-10">
-            <div className="eyebrow pb-3 mb-4 border-b" style={{ borderColor: "var(--rule)" }}>
+          <div className="surface p-6">
+            <div className="eyebrow pb-3 mb-4 border-b" style={{ borderColor: "var(--rule-soft)" }}>
               Checks {openFlags.length > 0 && `· ${openFlags.length} open`}
             </div>
             <ValidationFlags flags={product.validation_flags} />
@@ -160,8 +174,9 @@ export function ProductReview({
         </div>
 
         {/* ENRICHED */}
-        <div>
-          <div className="eyebrow pb-3 mb-1 border-b" style={{ borderColor: "var(--rule)" }}>
+        <div className="surface px-6 pb-2 overflow-hidden">
+          <div className="cct-rule -mx-6 mb-6" />
+          <div className="eyebrow pb-3 mb-1 border-b" style={{ borderColor: "var(--rule-soft)" }}>
             Enriched
           </div>
 
@@ -187,7 +202,7 @@ export function ProductReview({
             onChange={(v) => setDraft((d) => ({ ...d, classpath: v }))}
           />
 
-          <div className="eyebrow pt-9 pb-3 mb-1 border-b" style={{ borderColor: "var(--rule)" }}>
+          <div className="eyebrow pt-9 pb-3 mb-1 border-b" style={{ borderColor: "var(--rule-soft)" }}>
             Descriptions · four lengths, four rules
           </div>
           <Field
@@ -218,7 +233,7 @@ export function ProductReview({
             onChange={(v) => setDraft((d) => ({ ...d, long_desc: v }))}
           />
 
-          <div className="eyebrow pt-9 pb-3 mb-1 border-b" style={{ borderColor: "var(--rule)" }}>
+          <div className="eyebrow pt-9 pb-3 mb-1 border-b" style={{ borderColor: "var(--rule-soft)" }}>
             Attributes
           </div>
           {product.attributes.map((attr) => (
