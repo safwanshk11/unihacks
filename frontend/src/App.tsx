@@ -125,14 +125,19 @@ function App() {
 
   return (
     <div className="min-h-screen">
-      <Header onHome={() => setView({ name: "dashboard" })} />
+      <Header onHome={() => setView({ name: "dashboard" })} model={metrics?.llm?.model} />
 
       {error && (
         <div
-          className="max-w-5xl mx-auto mt-4 px-4 py-2.5 rounded-lg text-sm font-medium"
-          style={{ backgroundColor: "var(--danger-soft)", color: "var(--danger)" }}
+          className="max-w-[1080px] mx-auto mt-5 px-8"
+          role="alert"
         >
-          {error}
+          <div
+            className="flex items-start gap-3 px-4 py-3 border-l-2 text-[13px] leading-[1.5]"
+            style={{ borderColor: "var(--signal-mark)", backgroundColor: "var(--signal-wash)", color: "var(--signal)" }}
+          >
+            {error}
+          </div>
         </div>
       )}
 
@@ -162,7 +167,7 @@ function App() {
             saving={busy}
           />
         ) : (
-          <div className="max-w-5xl mx-auto px-6 py-10 text-sm" style={{ color: "var(--text-muted)" }}>
+          <div className="max-w-[1080px] mx-auto px-8 py-16 text-[13px]" style={{ color: "var(--ink-3)" }}>
             Loading product…
           </div>
         ))}

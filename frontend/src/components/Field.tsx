@@ -1,10 +1,15 @@
 import type { EnrichedField, Source } from "../types/product";
-import { ConfidenceDot } from "./ConfidenceDot";
+import { ConfidenceMeter } from "./ConfidenceMeter";
 
-const SOURCE_STYLE: Record<Source, { bg: string; fg: string; label: string }> = {
-  input: { bg: "var(--info-soft)", fg: "var(--info)", label: "From input" },
-  inferred: { bg: "var(--bg)", fg: "var(--text-muted)", label: "Rule-based" },
-  llm: { bg: "var(--ai-soft)", fg: "var(--ai)", label: "AI generated" },
+/**
+ * Provenance is encoded in ink weight, not hue — `llm` sits at full ink so
+ * model-written fields stand out, while rule/input recede. That keeps the
+ * page's only color (amber) exclusively for "needs a human."
+ */
+const SOURCE_LABEL: Record<Source, string> = {
+  input: "from input",
+  inferred: "rule",
+  llm: "llm",
 };
 
 export function Field({
@@ -13,51 +18,60 @@ export function Field({
   editing,
   onChange,
   multiline = false,
+  meta,
 }: {
   label: string;
   field: EnrichedField;
   editing: boolean;
   onChange: (value: string) => void;
   multiline?: boolean;
+  meta?: React.ReactNode;
 }) {
+  const inputStyle = {
+    borderColor: "var(--rule)",
+    color: "var(--ink)",
+    backgroundColor: "var(--raised)",
+    borderRadius: 3,
+  };
+
   return (
-    <div className="py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
-      <div className="flex items-center justify-between gap-3 mb-1.5">
-        <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-          {label}
-        </span>
-        <div className="flex items-center gap-2 shrink-0">
-          <ConfidenceDot confidence={field.confidence} />
+    <div className="py-4 border-b" style={{ borderColor: "var(--rule-soft)" }}>
+      <div className="flex items-center justify-between gap-4 mb-2">
+        <span className="eyebrow">{label}</span>
+        <span className="flex items-center gap-3 shrink-0">
+          {meta}
           <span
-            className="text-[11px] font-medium px-1.5 py-0.5 rounded"
-            style={{ backgroundColor: SOURCE_STYLE[field.source].bg, color: SOURCE_STYLE[field.source].fg }}
+            className="font-mono text-[10px] tracking-[0.04em]"
+            style={{ color: field.source === "llm" ? "var(--ink)" : "var(--ink-4)" }}
           >
-            {SOURCE_STYLE[field.source].label}
+            {SOURCE_LABEL[field.source]}
           </span>
-        </div>
+          <ConfidenceMeter confidence={field.confidence} label={false} />
+        </span>
       </div>
 
       {editing ? (
         multiline ? (
           <textarea
-            className="w-full rounded-md border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2"
-            style={{ borderColor: "var(--border)", color: "var(--text)" }}
+            className="w-full border px-3 py-2 text-[13.5px] focus:outline-none"
+            style={inputStyle}
             rows={3}
             value={field.value}
             onChange={(e) => onChange(e.target.value)}
           />
         ) : (
           <input
-            className="w-full rounded-md border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2"
-            style={{ borderColor: "var(--border)", color: "var(--text)" }}
+            className="w-full border px-3 py-2 text-[13.5px] focus:outline-none"
+            style={inputStyle}
             value={field.value}
             onChange={(e) => onChange(e.target.value)}
           />
         )
       ) : (
-        <p className="text-sm leading-snug">{field.value}</p>
+        <p className="text-[14px] leading-[1.45]">{field.value}</p>
       )}
-      <p className="text-xs mt-1" style={{ color: "var(--text-faint)" }}>
+
+      <p className="text-[11.5px] mt-1.5 leading-[1.5]" style={{ color: "var(--ink-4)" }}>
         {field.rationale}
       </p>
     </div>

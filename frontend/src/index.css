@@ -1,48 +1,101 @@
 @import "tailwindcss";
 
+/*
+  Lumen — a photometric spec sheet, not a UI kit.
+
+  The whole page is monochrome except for ONE chromatic value: filament
+  amber. It is reserved exclusively for "a human needs to look at this."
+  Anything the pipeline resolved on its own stays grayscale. That constraint
+  is what makes the review queue readable at a glance across 211 rows —
+  the eye goes straight to the warm marks and nowhere else.
+
+  Source (input / rule / llm) is deliberately NOT encoded in hue — it's
+  encoded in ink weight, so it never competes with the signal color.
+*/
+
 :root {
-  --bg: #fafafa;
-  --surface: #ffffff;
-  --border: #e4e4e7;
-  --border-soft: #eeeef0;
-  --text: #18181b;
-  --text-muted: #71717a;
-  --text-faint: #a1a1aa;
+  --paper: #fcfcfd;
+  --raised: #ffffff;
 
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
-  --accent-soft: #eef2ff;
+  --ink: #0e0f13;
+  --ink-2: #43464e;
+  --ink-3: #83868e;
+  --ink-4: #aaadb4;
 
-  --success: #16a34a;
-  --success-soft: #f0fdf4;
-  --warning: #d97706;
-  --warning-soft: #fffbeb;
-  --danger: #dc2626;
-  --danger-soft: #fef2f2;
-  --info: #2563eb;
-  --info-soft: #eff6ff;
-  --ai: #9333ea;
-  --ai-soft: #f5f0fe;
+  --rule: #e6e6ea;
+  --rule-soft: #f0f0f3;
 
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  /* The only chromatic value on the page. Tungsten at ~2700K. */
+  --signal: #9a5008;
+  --signal-mark: #e08c1c;
+  --signal-wash: #fcf5ea;
+
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+html {
+  background-color: var(--paper);
 }
 
 body {
-  background-color: var(--bg);
-  color: var(--text);
+  background-color: var(--paper);
+  color: var(--ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-  }
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01";
 }
 
 .font-mono {
   font-family: var(--font-mono);
+  font-feature-settings: "tnum";
+}
+
+/* Tiny tracked-out uppercase label — the spec-sheet voice. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+/* Figures in the readout band: large, light, tabular. */
+.figure {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+input,
+textarea {
+  font-family: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ink-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

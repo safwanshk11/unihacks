@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Confidence, EnrichedProduct, Metrics, SortColumn, SortState } from "../types/product";
-import { ConfidenceDot } from "./ConfidenceDot";
+import { ConfidenceMeter } from "./ConfidenceMeter";
 import { StampBadge } from "./StampBadge";
 
 const CONFIDENCE_RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 };
@@ -37,52 +37,75 @@ function sortProducts(products: EnrichedProduct[], sort: SortState): EnrichedPro
   });
 }
 
-function MetricsPanel({ metrics }: { metrics: Metrics | null }) {
+/**
+ * The instrument readout: figures separated by hairlines, no cards.
+ * Only the review queue is allowed to carry the signal color — it's the
+ * one number that implies work for a person.
+ */
+function Readout({ metrics }: { metrics: Metrics | null }) {
   if (!metrics || metrics.total === 0) return null;
-  const cells = [
-    { label: "Classified (high conf.)", value: `${metrics.classification_confidence?.high ?? 0}/${metrics.total}` },
-    { label: "Attributes from input", value: `${metrics.attributes?.from_input_pct ?? 0}%` },
-    { label: "Placeholder LOV compliance", value: `${metrics.lov_compliance?.compliant_pct ?? 0}%` },
-    { label: "Invoice desc ≤ 40 char", value: `${metrics.char_limit_compliance?.invoice_desc_ok_pct ?? 0}%` },
-    { label: "Mobile desc in 60-80 char", value: `${metrics.char_limit_compliance?.mobile_desc_ok_pct ?? 0}%` },
+
+  const cells: { label: string; value: string; signal?: boolean }[] = [
+    { label: "Records", value: String(metrics.total) },
     {
       label: "Auto-approved",
-      value: `${metrics.review_status?.auto_approved ?? 0} (${metrics.review_status?.auto_approved_pct ?? 0}%)`,
+      value: `${metrics.review_status?.auto_approved ?? 0}`,
     },
-    { label: "Needs review", value: `${metrics.needs_review ?? 0} (${metrics.needs_review_pct ?? 0}%)` },
+    { label: "Needs review", value: String(metrics.needs_review ?? 0), signal: (metrics.needs_review ?? 0) > 0 },
+    { label: "From input", value: `${metrics.attributes?.from_input_pct ?? 0}%` },
+    { label: "In vocabulary", value: `${metrics.lov_compliance?.compliant_pct ?? 0}%` },
+    { label: "Within limits", value: `${metrics.char_limit_compliance?.invoice_desc_ok_pct ?? 0}%` },
   ];
+
   const unreachable = metrics.llm?.llm_unreachable_count ?? 0;
 
   return (
-    <div
-      className="rounded-xl border p-5 mb-6"
-      style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
-    >
-      <div
-        className="flex items-center justify-between rounded-lg px-3.5 py-2.5 mb-4"
-        style={{ backgroundColor: "var(--ai-soft)" }}
-      >
-        <span className="text-sm font-medium" style={{ color: "var(--ai)" }}>
-          {metrics.llm?.long_desc_generated ?? 0}/{metrics.total} descriptions written by {metrics.llm?.model ?? "an LLM"}
-          {metrics.llm?.backend && ` (${metrics.llm.backend})`}
-          {(metrics.llm?.fallback_classifications ?? 0) > 0 &&
-            ` · ${metrics.llm?.fallback_classifications} ambiguous items reclassified by the LLM`}
-        </span>
-        {unreachable > 0 && (
-          <span className="text-xs font-medium" style={{ color: "var(--warning)" }}>
-            {metrics.llm?.backend ?? "LLM"} unreachable for {unreachable} item{unreachable === 1 ? "" : "s"} — rule-based fallback used
-          </span>
-        )}
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        {cells.map((c) => (
-          <div key={c.label}>
-            <div className="text-lg font-semibold tracking-tight">{c.value}</div>
-            <div className="text-xs mt-0.5" style={{ color: "var(--text-faint)" }}>
-              {c.label}
+    <div className="border-y" style={{ borderColor: "var(--rule)" }}>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+        {cells.map((c, i) => (
+          <div
+            key={c.label}
+            className="px-5 py-5 border-r border-b lg:border-b-0 last:border-r-0"
+            style={{ borderColor: "var(--rule-soft)" }}
+          >
+            <div
+              className="figure text-[26px] leading-none"
+              style={{ color: c.signal ? "var(--signal)" : "var(--ink)" }}
+            >
+              {c.value}
             </div>
+            <div className="eyebrow mt-2.5">{c.label}</div>
+            {i === 1 && (
+              <div className="text-[11px] mt-1" style={{ color: "var(--ink-4)" }}>
+                {metrics.review_status?.auto_approved_pct ?? 0}% of catalog
+              </div>
+            )}
           </div>
         ))}
+      </div>
+
+      <div
+        className="px-5 py-3 border-t flex flex-wrap items-center gap-x-5 gap-y-1"
+        style={{ borderColor: "var(--rule-soft)" }}
+      >
+        <span className="text-[12px]" style={{ color: "var(--ink-3)" }}>
+          <span style={{ color: "var(--ink)" }}>{metrics.llm?.long_desc_generated ?? 0}</span> descriptions written by{" "}
+          <span className="font-mono text-[11px]" style={{ color: "var(--ink)" }}>
+            {metrics.llm?.model ?? "an LLM"}
+          </span>
+          , grounded in extracted attributes
+        </span>
+        {(metrics.llm?.fallback_classifications ?? 0) > 0 && (
+          <span className="text-[12px]" style={{ color: "var(--ink-3)" }}>
+            <span style={{ color: "var(--ink)" }}>{metrics.llm?.fallback_classifications}</span> reclassified where rules
+            found nothing
+          </span>
+        )}
+        {unreachable > 0 && (
+          <span className="text-[12px]" style={{ color: "var(--signal)" }}>
+            {unreachable} fell back to rules — {metrics.llm?.backend} unreachable
+          </span>
+        )}
       </div>
     </div>
   );
@@ -103,18 +126,42 @@ function SortableHeader({
 }) {
   const active = sort?.column === column;
   return (
-    <th className={`px-4 py-2.5 text-xs font-medium select-none ${className}`} style={{ color: "var(--text-faint)" }}>
+    <th className={`text-left font-normal py-3 px-5 ${className}`}>
       <button
         onClick={() => onSort(column)}
-        className="flex items-center gap-1 hover:text-inherit"
-        style={{ color: active ? "var(--text)" : "var(--text-faint)" }}
+        className="eyebrow inline-flex items-center gap-1.5 transition-colors"
+        style={{ color: active ? "var(--ink)" : undefined }}
       >
         {label}
-        <span className="text-[10px] w-2.5 inline-block" style={{ color: active ? "var(--accent)" : "transparent" }}>
-          {active && sort?.direction === "asc" ? "▲" : "▼"}
+        <span aria-hidden style={{ opacity: active ? 1 : 0, fontSize: 8 }}>
+          {sort?.direction === "asc" ? "▲" : "▼"}
         </span>
       </button>
     </th>
+  );
+}
+
+function ActionButton({
+  children,
+  onClick,
+  disabled,
+  title,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="text-[13px] px-3 py-1.5 border transition-colors disabled:opacity-45 hover:bg-black/[0.03] whitespace-nowrap"
+      style={{ borderColor: "var(--rule)", color: "var(--ink-2)", borderRadius: 3 }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -147,122 +194,124 @@ export function CatalogDashboard({
   };
 
   const sortedProducts = useMemo(() => sortProducts(products, sort), [products, sort]);
-
-  const flaggedCount = products.filter((p) =>
-    p.validation_flags.some((f) => f.severity === "warning" || f.severity === "error"),
-  ).length;
+  const needsReview = products.filter((p) => p.status === "pending").length;
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10">
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+    <div className="max-w-[1080px] mx-auto px-8 pb-24">
+      <div className="pt-14 pb-8 flex flex-wrap items-end justify-between gap-6">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Lighting Catalog</h1>
-          <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
-            {products.length} item{products.length === 1 ? "" : "s"} on file
-            {flaggedCount > 0 && (
+          <h1 className="text-[32px] leading-[1.05] font-semibold tracking-[-0.035em]">Lighting catalog</h1>
+          <p className="text-[13px] mt-2.5" style={{ color: "var(--ink-3)" }}>
+            {products.length} record{products.length === 1 ? "" : "s"} enriched from raw distributor data
+            {needsReview > 0 && (
               <>
-                {" "}
-                · <span style={{ color: "var(--warning)" }}>{flaggedCount} flagged for review</span>
+                {" · "}
+                <span style={{ color: "var(--signal)" }}>{needsReview} waiting on you</span>
               </>
             )}
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={onAdd}
-            disabled={seeding}
-            className="text-sm font-medium px-3.5 py-2 rounded-lg border hover:bg-black/[0.02] transition-colors disabled:opacity-50"
-            style={{ borderColor: "var(--border)", color: "var(--text)" }}
-          >
+          <ActionButton onClick={onAdd} disabled={seeding}>
             Add product
-          </button>
-          <button
-            onClick={onSeed}
-            disabled={seeding}
-            className="text-sm font-medium px-3.5 py-2 rounded-lg border hover:bg-black/[0.02] transition-colors disabled:opacity-70"
-            style={{ borderColor: "var(--border)", color: "var(--text)" }}
-          >
-            {seeding ? `Enriching with local LLM… ${products.length}/211` : "Reseed from real data"}
-          </button>
-          <button
+          </ActionButton>
+          <ActionButton onClick={onSeed} disabled={seeding}>
+            {seeding ? `Enriching ${products.length}/211…` : "Reseed"}
+          </ActionButton>
+          <ActionButton
             onClick={() => onExport("csv", sort)}
             disabled={seeding}
-            className="text-sm font-medium px-3.5 py-2 rounded-lg text-white transition-colors disabled:opacity-50"
-            style={{ backgroundColor: "var(--accent)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "var(--accent-hover)")}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "var(--accent)")}
             title={sort ? `Exports sorted by ${sort.column} (${sort.direction})` : "Exports in default order"}
           >
             Export CSV
-          </button>
+          </ActionButton>
         </div>
       </div>
 
-      <MetricsPanel metrics={metrics} />
+      <Readout metrics={metrics} />
 
-      <div
-        className="rounded-xl overflow-hidden border"
-        style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
-      >
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
-              <th className="px-4 py-2.5 w-28 text-xs font-medium" style={{ color: "var(--text-faint)" }}>
-                MPN
-              </th>
-              <th className="px-4 py-2.5 text-xs font-medium" style={{ color: "var(--text-faint)" }}>
-                Title
-              </th>
-              <SortableHeader label="Classpath" column="classpath" sort={sort} onSort={toggleSort} className="w-52" />
-              <SortableHeader label="Confidence" column="confidence" sort={sort} onSort={toggleSort} className="w-32" />
-              <SortableHeader label="Status" column="status" sort={sort} onSort={toggleSort} className="w-28" />
+      <table className="w-full border-collapse">
+        <thead>
+          <tr
+            className="sticky z-10 border-b"
+            style={{ top: 52, backgroundColor: "var(--paper)", borderColor: "var(--rule)" }}
+          >
+            <th className="eyebrow text-left font-normal py-3 px-5 w-[132px] hidden md:table-cell">MPN</th>
+            <th className="eyebrow text-left font-normal py-3 px-5">Product</th>
+            <SortableHeader
+              label="Class"
+              column="classpath"
+              sort={sort}
+              onSort={toggleSort}
+              className="w-[184px] hidden lg:table-cell"
+            />
+            <SortableHeader
+              label="Confidence"
+              column="confidence"
+              sort={sort}
+              onSort={toggleSort}
+              className="w-[132px] hidden sm:table-cell"
+            />
+            <SortableHeader label="Status" column="status" sort={sort} onSort={toggleSort} className="w-[150px]" />
+          </tr>
+        </thead>
+        <tbody>
+          {loading && (
+            <tr>
+              <td colSpan={5} className="py-16 text-center text-[13px]" style={{ color: "var(--ink-3)" }}>
+                Loading catalog…
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm" style={{ color: "var(--text-muted)" }}>
-                  Loading catalog…
-                </td>
-              </tr>
-            )}
-            {!loading && products.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-14 text-center text-sm" style={{ color: "var(--text-muted)" }}>
-                  Nothing here yet. Reseed from the real data or add a product to get started.
-                </td>
-              </tr>
-            )}
-            {sortedProducts.map((p) => (
-              <tr
-                key={p.id}
-                onClick={() => onOpen(p.id)}
-                className="cursor-pointer border-b last:border-b-0 hover:bg-black/[0.015] transition-colors"
-                style={{ borderColor: "var(--border-soft)" }}
+          )}
+          {!loading && products.length === 0 && (
+            <tr>
+              <td colSpan={5} className="py-20 text-center">
+                <p className="text-[15px]">Nothing enriched yet.</p>
+                <p className="text-[13px] mt-1.5" style={{ color: "var(--ink-3)" }}>
+                  Reseed to load 211 real lighting rows, or add a single product.
+                </p>
+              </td>
+            </tr>
+          )}
+          {sortedProducts.map((p) => (
+            <tr
+              key={p.id}
+              onClick={() => onOpen(p.id)}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onOpen(p.id);
+                }
+              }}
+              className="group cursor-pointer border-b transition-colors hover:bg-black/[0.018]"
+              style={{ borderColor: "var(--rule-soft)" }}
+            >
+              <td
+                className="py-3.5 px-5 font-mono text-[11px] align-middle transition-colors hidden md:table-cell"
+                style={{ color: "var(--ink-4)" }}
               >
-                <td className="px-4 py-3 font-mono text-xs" style={{ color: "var(--text-faint)" }}>
-                  {p.raw_mfg_part_num}
-                </td>
-                <td className="px-4 py-3 font-medium">{p.short_desc.value}</td>
-                <td className="px-4 py-3">
-                  <span
-                    className="text-xs px-2 py-1 rounded-md"
-                    style={{ backgroundColor: "var(--bg)", color: "var(--text-muted)" }}
-                  >
-                    {classpathLeaf(p)}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <ConfidenceDot confidence={overallConfidence(p)} />
-                </td>
-                <td className="px-4 py-3">
-                  <StampBadge status={p.status} autoApproved={isAutoApproved(p)} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                <span className="group-hover:text-[color:var(--ink-2)]">{p.raw_mfg_part_num}</span>
+              </td>
+              <td className="py-3.5 px-5 text-[13.5px] align-middle" style={{ color: "var(--ink)" }}>
+                {p.short_desc.value}
+                <span className="block md:hidden font-mono text-[10.5px] mt-1" style={{ color: "var(--ink-4)" }}>
+                  {p.raw_mfg_part_num} · {classpathLeaf(p)}
+                </span>
+              </td>
+              <td className="py-3.5 px-5 text-[12.5px] align-middle hidden lg:table-cell" style={{ color: "var(--ink-3)" }}>
+                {classpathLeaf(p)}
+              </td>
+              <td className="py-3.5 px-5 align-middle hidden sm:table-cell">
+                <ConfidenceMeter confidence={overallConfidence(p)} />
+              </td>
+              <td className="py-3.5 px-5 align-middle">
+                <StampBadge status={p.status} autoApproved={isAutoApproved(p)} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

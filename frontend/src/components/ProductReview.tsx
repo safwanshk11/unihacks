@@ -28,17 +28,29 @@ function draftFrom(p: EnrichedProduct): Draft {
   };
 }
 
-const sectionLabel = "text-xs font-medium mt-6 mb-2";
-const sectionLabelStyle = { color: "var(--text-faint)" };
-
 function CharCount({ value, min, max }: { value: string; min?: number; max?: number }) {
   const len = value.length;
   const ok = (min === undefined || len >= min) && (max === undefined || len <= max);
-  const target = min !== undefined && max !== undefined ? `${min}-${max}` : `≤${max}`;
+  const target = min !== undefined && max !== undefined ? `${min}–${max}` : `≤${max}`;
   return (
-    <span className="text-[11px]" style={{ color: ok ? "var(--text-faint)" : "var(--danger)" }}>
-      {len} chars (target {target})
+    <span
+      className="font-mono text-[10px] tracking-[0.04em] whitespace-nowrap"
+      style={{ color: ok ? "var(--ink-4)" : "var(--signal)" }}
+      title={`Target ${target} characters`}
+    >
+      {len}/{target}
     </span>
+  );
+}
+
+function RawField({ label, value }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="mb-5">
+      <div className="eyebrow mb-1.5">{label}</div>
+      <p className="text-[13.5px] leading-[1.45]" style={{ color: "var(--ink-2)" }}>
+        {value}
+      </p>
+    </div>
   );
 }
 
@@ -78,175 +90,158 @@ export function ProductReview({
     await onSave(product.id, { status: "reviewed" });
   };
 
+  const autoApproved = product.validation_flags.some((f) => f.field === "status");
+  const openFlags = product.validation_flags.filter((f) => f.severity === "warning" || f.severity === "error");
+
+  const btn = "text-[13px] px-3 py-1.5 border transition-colors disabled:opacity-45 whitespace-nowrap";
+  const btnStyle = { borderColor: "var(--rule)", color: "var(--ink-2)", borderRadius: 3 };
+
   return (
-    <div className="max-w-5xl mx-auto px-6 py-10">
-      <div className="flex items-center justify-between mb-5">
-        <button onClick={onBack} className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
-          ← Back to catalog
+    <div className="max-w-[1080px] mx-auto px-8 pb-24">
+      <div className="pt-8 pb-6 flex items-center justify-between gap-6">
+        <button
+          onClick={onBack}
+          className="text-[13px] whitespace-nowrap transition-colors hover:text-[color:var(--ink)]"
+          style={{ color: "var(--ink-3)" }}
+        >
+          ← Catalog
         </button>
-        <div className="flex items-center gap-2.5">
-          <StampBadge
-            status={product.status}
-            autoApproved={product.validation_flags.some((f) => f.field === "status")}
-          />
-          {product.status === "pending" && (
-            <button
-              onClick={markReviewed}
-              disabled={saving}
-              className="text-sm font-medium px-3.5 py-2 rounded-lg text-white disabled:opacity-50"
-              style={{ backgroundColor: "var(--success)" }}
-            >
-              Approve
-            </button>
-          )}
-          {editing ? (
-            <button
-              onClick={handleSaveEdits}
-              disabled={saving}
-              className="text-sm font-medium px-3.5 py-2 rounded-lg text-white disabled:opacity-50"
-              style={{ backgroundColor: "var(--accent)" }}
-            >
-              {saving ? "Saving…" : "Save changes"}
-            </button>
-          ) : (
-            <button
-              onClick={() => setEditing(true)}
-              className="text-sm font-medium px-3.5 py-2 rounded-lg border"
-              style={{ borderColor: "var(--border)", color: "var(--text)" }}
-            >
-              Edit
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div
-        className="rounded-xl border overflow-hidden mb-6"
-        style={{ borderColor: "var(--border)", backgroundColor: "var(--surface)" }}
-      >
-        <div className="grid" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,2fr)" }}>
-          {/* AS SUBMITTED */}
-          <div className="p-6 border-r" style={{ borderColor: "var(--border)" }}>
-            <span
-              className="inline-block text-xs font-medium px-2 py-1 rounded-md mb-4"
-              style={{ backgroundColor: "var(--bg)", color: "var(--text-muted)" }}
-            >
-              As submitted
-            </span>
-            <p className="text-xs font-medium mb-1" style={{ color: "var(--text-faint)" }}>
-              Mfg_Part_Num
-            </p>
-            <p className="text-sm mb-4 font-mono">{product.raw_mfg_part_num}</p>
-            <p className="text-xs font-medium mb-1" style={{ color: "var(--text-faint)" }}>
-              Part_Desc
-            </p>
-            <p className="text-sm mb-4">{product.raw_part_desc}</p>
-            <p className="text-xs font-medium mb-1" style={{ color: "var(--text-faint)" }}>
-              Part_Manuf
-            </p>
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-              {product.raw_part_manuf}
-            </p>
-          </div>
-
-          {/* ENRICHED */}
-          <div className="p-6">
-            <span
-              className="inline-block text-xs font-medium px-2 py-1 rounded-md mb-4"
-              style={{ backgroundColor: "var(--accent-soft)", color: "var(--accent)" }}
-            >
-              Enriched
-            </span>
-
-            <Field
-              label="Manufacturer Name"
-              field={{ ...product.manufacturer_name, value: editing ? draft.manufacturer_name : product.manufacturer_name.value }}
-              editing={editing}
-              onChange={(v) => setDraft((d) => ({ ...d, manufacturer_name: v }))}
-            />
-            <Field
-              label="Brand Name"
-              field={{ ...product.brand_name, value: editing ? draft.brand_name : product.brand_name.value }}
-              editing={editing}
-              onChange={(v) => setDraft((d) => ({ ...d, brand_name: v }))}
-            />
-            <Field
-              label="Classpath"
-              field={{ ...product.classpath, value: editing ? draft.classpath : product.classpath.value }}
-              editing={editing}
-              onChange={(v) => setDraft((d) => ({ ...d, classpath: v }))}
-            />
-
-            <p className={sectionLabel} style={sectionLabelStyle}>
-              Descriptions
-            </p>
-
-            <div className="flex items-center justify-between">
-              <div />
-              <CharCount value={editing ? draft.invoice_desc : product.invoice_desc.value} max={40} />
-            </div>
-            <Field
-              label="Invoice Desc"
-              field={{ ...product.invoice_desc, value: editing ? draft.invoice_desc : product.invoice_desc.value }}
-              editing={editing}
-              onChange={(v) => setDraft((d) => ({ ...d, invoice_desc: v }))}
-            />
-            <div className="flex items-center justify-between">
-              <div />
-              <CharCount value={editing ? draft.mobile_desc : product.mobile_desc.value} min={60} max={80} />
-            </div>
-            <Field
-              label="Mobile Desc"
-              field={{ ...product.mobile_desc, value: editing ? draft.mobile_desc : product.mobile_desc.value }}
-              editing={editing}
-              onChange={(v) => setDraft((d) => ({ ...d, mobile_desc: v }))}
-            />
-            <Field
-              label="Short Desc (Title)"
-              field={{ ...product.short_desc, value: editing ? draft.short_desc : product.short_desc.value }}
-              editing={editing}
-              onChange={(v) => setDraft((d) => ({ ...d, short_desc: v }))}
-            />
-            <Field
-              label="Long Desc"
-              field={{ ...product.long_desc, value: editing ? draft.long_desc : product.long_desc.value }}
-              editing={editing}
-              multiline
-              onChange={(v) => setDraft((d) => ({ ...d, long_desc: v }))}
-            />
-
-            <p className={sectionLabel} style={sectionLabelStyle}>
-              Attributes
-            </p>
-            {product.attributes.map((attr) => (
-              <div key={attr.label}>
-                <Field
-                  label={attr.uom ? `${attr.label} (${attr.uom})` : attr.label}
-                  field={{
-                    ...attr,
-                    value: editing ? draft.attributes[attr.label] ?? attr.value : attr.value,
-                  }}
-                  editing={editing}
-                  onChange={(v) =>
-                    setDraft((d) => ({ ...d, attributes: { ...d.attributes, [attr.label]: v } }))
-                  }
-                />
-                {attr.lov_compliant === false && (
-                  <p className="text-[11px] -mt-2 mb-2" style={{ color: "var(--warning)" }}>
-                    Not in placeholder LOV — verify against Unicat.
-                  </p>
-                )}
-              </div>
-            ))}
+        <div className="flex items-center gap-4">
+          <StampBadge status={product.status} autoApproved={autoApproved} />
+          <div className="flex gap-2">
+            {product.status === "pending" && (
+              <button
+                onClick={markReviewed}
+                disabled={saving}
+                className={btn}
+                style={{ ...btnStyle, borderColor: "var(--ink)", color: "var(--paper)", backgroundColor: "var(--ink)" }}
+              >
+                Approve
+              </button>
+            )}
+            {editing ? (
+              <button onClick={handleSaveEdits} disabled={saving} className={btn} style={btnStyle}>
+                {saving ? "Saving…" : "Save changes"}
+              </button>
+            ) : (
+              <button onClick={() => setEditing(true)} className={btn} style={btnStyle}>
+                Edit
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      <div>
-        <p className="text-xs font-medium mb-2" style={{ color: "var(--text-faint)" }}>
-          Validation flags ({product.validation_flags.length})
+      <div className="border-t pt-8" style={{ borderColor: "var(--rule)" }}>
+        <h1 className="text-[26px] leading-[1.15] font-semibold tracking-[-0.03em] max-w-[42ch]">
+          {product.short_desc.value}
+        </h1>
+        <p className="font-mono text-[11px] mt-2.5" style={{ color: "var(--ink-4)" }}>
+          {product.raw_mfg_part_num}
         </p>
-        <ValidationFlags flags={product.validation_flags} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2.1fr)] gap-10 lg:gap-16 mt-10">
+        {/* AS SUBMITTED — what the distributor actually sent */}
+        <div>
+          <div className="eyebrow pb-3 mb-5 border-b" style={{ borderColor: "var(--rule)" }}>
+            As submitted
+          </div>
+          <RawField label="Mfg_Part_Num" value={product.raw_mfg_part_num} />
+          <RawField label="Part_Desc" value={product.raw_part_desc} />
+          <RawField label="Part_Manuf" value={product.raw_part_manuf} />
+
+          <div className="mt-10">
+            <div className="eyebrow pb-3 mb-4 border-b" style={{ borderColor: "var(--rule)" }}>
+              Checks {openFlags.length > 0 && `· ${openFlags.length} open`}
+            </div>
+            <ValidationFlags flags={product.validation_flags} />
+          </div>
+        </div>
+
+        {/* ENRICHED */}
+        <div>
+          <div className="eyebrow pb-3 mb-1 border-b" style={{ borderColor: "var(--rule)" }}>
+            Enriched
+          </div>
+
+          <Field
+            label="Manufacturer"
+            field={{
+              ...product.manufacturer_name,
+              value: editing ? draft.manufacturer_name : product.manufacturer_name.value,
+            }}
+            editing={editing}
+            onChange={(v) => setDraft((d) => ({ ...d, manufacturer_name: v }))}
+          />
+          <Field
+            label="Brand"
+            field={{ ...product.brand_name, value: editing ? draft.brand_name : product.brand_name.value }}
+            editing={editing}
+            onChange={(v) => setDraft((d) => ({ ...d, brand_name: v }))}
+          />
+          <Field
+            label="Classpath"
+            field={{ ...product.classpath, value: editing ? draft.classpath : product.classpath.value }}
+            editing={editing}
+            onChange={(v) => setDraft((d) => ({ ...d, classpath: v }))}
+          />
+
+          <div className="eyebrow pt-9 pb-3 mb-1 border-b" style={{ borderColor: "var(--rule)" }}>
+            Descriptions · four lengths, four rules
+          </div>
+          <Field
+            label="Invoice"
+            field={{ ...product.invoice_desc, value: editing ? draft.invoice_desc : product.invoice_desc.value }}
+            editing={editing}
+            onChange={(v) => setDraft((d) => ({ ...d, invoice_desc: v }))}
+            meta={<CharCount value={editing ? draft.invoice_desc : product.invoice_desc.value} max={40} />}
+          />
+          <Field
+            label="Mobile"
+            field={{ ...product.mobile_desc, value: editing ? draft.mobile_desc : product.mobile_desc.value }}
+            editing={editing}
+            onChange={(v) => setDraft((d) => ({ ...d, mobile_desc: v }))}
+            meta={<CharCount value={editing ? draft.mobile_desc : product.mobile_desc.value} min={60} max={80} />}
+          />
+          <Field
+            label="Title"
+            field={{ ...product.short_desc, value: editing ? draft.short_desc : product.short_desc.value }}
+            editing={editing}
+            onChange={(v) => setDraft((d) => ({ ...d, short_desc: v }))}
+          />
+          <Field
+            label="Long"
+            field={{ ...product.long_desc, value: editing ? draft.long_desc : product.long_desc.value }}
+            editing={editing}
+            multiline
+            onChange={(v) => setDraft((d) => ({ ...d, long_desc: v }))}
+          />
+
+          <div className="eyebrow pt-9 pb-3 mb-1 border-b" style={{ borderColor: "var(--rule)" }}>
+            Attributes
+          </div>
+          {product.attributes.map((attr) => (
+            <Field
+              key={attr.label}
+              label={attr.uom ? `${attr.label} · ${attr.uom}` : attr.label}
+              field={{ ...attr, value: editing ? draft.attributes[attr.label] ?? attr.value : attr.value }}
+              editing={editing}
+              onChange={(v) => setDraft((d) => ({ ...d, attributes: { ...d.attributes, [attr.label]: v } }))}
+              meta={
+                attr.lov_compliant === false ? (
+                  <span
+                    className="font-mono text-[10px] tracking-[0.04em] whitespace-nowrap"
+                    style={{ color: "var(--signal)" }}
+                    title="Value falls outside the controlled vocabulary"
+                  >
+                    off-vocabulary
+                  </span>
+                ) : undefined
+              }
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
