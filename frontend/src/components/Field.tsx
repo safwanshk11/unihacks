@@ -16,10 +16,10 @@ const SOURCE_LABEL: Record<Source, string> = {
   llm: "llm",
 };
 
-const CONFIDENCE_INK: Record<Confidence, string> = {
-  high: "var(--ink-3)",
-  medium: "var(--ink-4)",
-  low: "var(--signal)",
+const CONFIDENCE_STYLE: Record<Confidence, { dot: string; text: string; wash: string }> = {
+  high: { dot: "var(--conf-high)", text: "var(--conf-high)", wash: "var(--conf-high-wash)" },
+  medium: { dot: "var(--conf-med)", text: "var(--conf-med)", wash: "var(--conf-med-wash)" },
+  low: { dot: "var(--conf-low)", text: "var(--conf-low)", wash: "var(--conf-low-wash)" },
 };
 
 export function Field({
@@ -57,11 +57,21 @@ export function Field({
             {SOURCE_LABEL[field.source]}
           </span>
           <span
-            className="font-mono text-[10px] tracking-[0.04em] whitespace-nowrap"
-            style={{ color: CONFIDENCE_INK[field.confidence] }}
+            className="inline-flex items-center gap-1.5 rounded-full pl-1.5 pr-2 py-[3px] whitespace-nowrap"
+            style={{ backgroundColor: CONFIDENCE_STYLE[field.confidence].wash }}
             title={`${field.confidence} confidence`}
           >
-            {field.confidence}
+            <span
+              className="h-[5px] w-[5px] rounded-full shrink-0"
+              style={{ backgroundColor: CONFIDENCE_STYLE[field.confidence].dot }}
+              aria-hidden
+            />
+            <span
+              className="font-mono text-[9.5px] tracking-[0.04em]"
+              style={{ color: CONFIDENCE_STYLE[field.confidence].text }}
+            >
+              {field.confidence}
+            </span>
           </span>
         </span>
       </div>
