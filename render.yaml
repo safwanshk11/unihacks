@@ -20,8 +20,11 @@ services:
         sync: false
       - key: AUTH_SECRET
         generateValue: true
-      - key: FRONTEND_ORIGIN
-        value: https://lumen-console.onrender.com
+      - key: FRONTEND_HOST
+        fromService:
+          type: web
+          name: lumen-console
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
 
   - type: web
     name: lumen-console
@@ -30,8 +33,11 @@ services:
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     envVars:
-      - key: VITE_API_URL
-        value: https://lumen-api.onrender.com
+      - key: VITE_API_HOST
+        fromService:
+          type: web
+          name: lumen-api
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
     routes:
       - type: rewrite
         source: /*

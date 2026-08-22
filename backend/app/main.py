@@ -14,15 +14,20 @@ from app.store import init_db  # noqa: E402
 
 app = FastAPI(title="UniHack Product Intelligence API")
 
+frontend_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+]
+if os.environ.get("FRONTEND_ORIGIN"):
+    frontend_origins.append(os.environ["FRONTEND_ORIGIN"])
+if os.environ.get("FRONTEND_HOST"):
+    frontend_origins.append(f"https://{os.environ['FRONTEND_HOST']}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        *([os.environ["FRONTEND_ORIGIN"]] if os.environ.get("FRONTEND_ORIGIN") else []),
-    ],
+    allow_origins=frontend_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

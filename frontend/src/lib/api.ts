@@ -29,7 +29,9 @@ export function isSeedInProgressDetail(detail: unknown): detail is SeedInProgres
 // Session token lives in sessionStorage, not localStorage: it should not
 // outlive the browser tab for a console holding unpublished content.
 const TOKEN_KEY = "lumen.session";
-const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const configuredApiUrl = (import.meta.env.VITE_API_URL ?? "").trim();
+const configuredApiHost = (import.meta.env.VITE_API_HOST ?? "").trim();
+const API_BASE = (configuredApiUrl || (configuredApiHost ? `https://${configuredApiHost}` : "")).replace(/\/$/, "");
 
 export const session = {
   get: () => sessionStorage.getItem(TOKEN_KEY),
