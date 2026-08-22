@@ -1,152 +1,162 @@
-# Lumen — AI-Powered Product Intelligence for Industrial Commerce
+# Lumen
 
-Named for the unit this pipeline actually deals in: lumens, Kelvin, watts —
-real lighting-industry measurements extracted straight out of cryptic
-distributor part numbers, not just a generic "light" pun.
+### Turn cryptic catalog rows into explainable product data
 
-Turns Unilog's real raw catalog rows — a manufacturer part number, a cryptic
-abbreviated description, an unbranded flag — into structured, explainable,
-commerce-ready product data: classified taxonomy, extracted attributes,
-four description formats (invoice / mobile / short / long), confidence
-scoring, source tracing (input vs. rule-inferred vs. a real local LLM call),
-confidence-gated auto-approval, and validation flags for whatever's left for
-human review.
+Industrial catalog feeds often arrive as rows like `3/8 CPLG BRS 150#`: useful
+to a buyer who knows the trade, but not ready for a storefront, search index,
+or downstream ERP. **Lumen** converts those rows into structured,
+commerce-ready records and makes uncertainty visible instead of hiding it.
 
-A **hybrid pipeline**: deterministic regex/dictionary extraction handles the
-structured fields (finish codes, dimensions, CCT — more auditable and less
-hallucination-prone than asking a model to read digits off a part number),
-and a real LLM call handles the two things a rules engine is genuinely bad
-at — classifying items the keyword rules can't place, and writing the long
-description as grounded prose from the already-extracted facts instead of
-comma-joining them. That LLM call runs against either **Ollama** (local, no
-API key, fully offline — the default) or **Gemini** (cloud, needs a free API
-key), switchable with one env var — see
-[The AI part](backend/README.md#the-ai-part) for setup and
-[Hybrid AI layer](backend/README.md#hybrid-ai-layer) for exactly what's
-rule-based vs. model-generated, and why.
+Built for the UniHack challenge, Lumen is a working product-enrichment console
+with a deliberately measurable approach:
 
-Built for the UniHack challenge: *AI-Powered Product Intelligence for
-Industrial Commerce*.
+- **Classify** products into a useful taxonomy, across lighting and mixed catalogs.
+- **Extract** attributes such as finish, bulb shape, CCT, wattage, dimensions, and UOM.
+- **Normalize** manufacturer names, trade abbreviations, units, and fractions.
+- **Describe** every product as invoice, mobile, short, and long copy.
+- **Validate** character limits, duplicate rows, MPN mismatches, and vocabulary compliance.
+- **Review** only low-confidence or flagged records, with source and rationale on every field.
+- **Export** the exact 252-column Unilog Delivery Format.
 
-**Two lanes, one router.** Lighting fixtures & lamps are specified to depth
-— finish codes read out of MPN suffixes, ANSI bulb shapes, CCT, lumens —
-answering the brief's "depth beats breadth." Every other category routes to
-a generic lane that classifies and extracts with the model, so a dishwasher,
-a pipe coupling or a hex bolt each come out as themselves. Nothing is
-mislabelled to fit the specialist schema.
+## Why it is different
 
-**Feed it your own data.** `Import file` takes a `.csv` or `.xlsx`
-catalogue; the header row is located rather than assumed, and column names
-are matched loosely. The pipeline is not bound to the sample in this repo.
+Lumen uses AI where language models help and rules where rules are safer.
+Known product-code conventions are parsed deterministically, so a finish code
+or dimension is auditable. The model handles open-ended classification and
+writes grounded long descriptions from extracted facts, not from guesses.
 
-**Output is the real contract.** Export emits Unilog's Delivery Format —
-all **252 static headers, exact names, none added, renamed or removed**.
-Fields a raw 6-column input cannot supply are left empty rather than
-invented.
+The pipeline has two lanes:
 
-## What's real vs. placeholder
+```text
+raw row
+	-> shorthand expansion + manufacturer cleanup
+	-> lighting specialist lane OR generic cross-category lane
+	-> attributes + four descriptions + confidence + rationale
+	-> validation + de-duplication
+	-> auto-approve or send to human review
+	-> 252-column Delivery Format
+```
 
-Only two of Unilog's reference files were available for this build: the
-1,000-row raw catalog, and two worked examples of the target output schema
-(not the full 200-item labelled ground truth). Everything the pipeline needs
-beyond that — manufacturer normalization, the controlled attribute
-vocabulary (LOV), UOM abbreviations — is **self-authored placeholder data**,
-clearly flagged in code and in the UI, standing in for Unilog's real master
-files until they're available. See
-[backend/README.md](backend/README.md#whats-real-vs-placeholder) for the
-exact file-by-file breakdown and what would replace each placeholder.
+The specialist lane goes deep on lighting. The generic lane keeps a dishwasher,
+pipe coupling, bolt, or glove from being forced into a lighting schema.
 
-## Stack
+## See it in action
 
-- **Backend**: Python, FastAPI, SQLite, session auth — see [backend/README.md](backend/README.md)
-- **Frontend**: React, Vite, TypeScript, Tailwind CSS
+The dashboard supports the full workflow:
 
-## Run locally
+1. **Reseed** the 211-row lighting sample, or **Import file** with your own `.csv` or `.xlsx`.
+2. Inspect the catalog sorted by classpath, confidence, or review status.
+3. Open a record to see each value, its source (`input`, `inferred`, or `llm`), confidence, and rationale.
+4. Edit flagged values in the review view and approve them.
+5. Export CSV or JSON, or score the catalog against a known-good Delivery Format file.
 
-Two terminals:
+Try the mixed-category fixture at
+[`backend/app/data/sample_mixed_categories.csv`](backend/app/data/sample_mixed_categories.csv).
+
+## Quick start
+
+Requirements: Python 3.10+, Node.js 18+, npm, and macOS/Linux. Ollama is
+optional but recommended for the default local AI path.
+
+### 1. Start an LLM backend
 
 ```bash
-# Terminal 0 — local LLM (once; leave running). Skip this and set
-# LLM_BACKEND=gemini in backend/.env instead if you'd rather use a cloud
-# key — see backend/README.md#the-ai-part.
-brew install ollama && ollama pull llama3.2:3b
+brew install ollama
+ollama pull llama3.2:3b
 ollama serve
 ```
 
+To use Gemini instead, copy `backend/.env.example` to `backend/.env` and set
+`LLM_BACKEND=gemini` and `GEMINI_API_KEY`. The app falls back to deterministic
+enrichment when the configured model is unavailable, with a visible validation
+flag.
+
+### 2. Start the API
+
 ```bash
-# Terminal 1 — backend (port 8001)
 cd backend
-python3 -m venv venv && source venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8001
 ```
 
+API documentation: http://127.0.0.1:8001/docs
+
+### 3. Start the console
+
 ```bash
-# Terminal 2 — frontend (port 5174, proxies /api to the backend)
 cd frontend
 npm install
 npm run dev -- --port 5174
 ```
 
-Open http://localhost:5174 and sign in — `admin` / `lumen-demo` by default,
-configurable in `backend/.env` (see
-[Login](backend/README.md#login); nothing is hardcoded in the repo).
+Open http://localhost:5174 and sign in with `admin` / `lumen-demo` for a local
+demo. Change these values in `backend/.env` before sharing the app.
 
-Then: **Reseed** loads the 211 real lighting rows, **Import file** takes your
-own `.csv`/`.xlsx` (try `backend/app/data/sample_mixed_categories.csv` to see
-non-lighting categories), **Export CSV** emits the 252-column Delivery
-Format, and **Accuracy → Score against ground truth** scores the output
-field by field.
+## API surface
 
-## How enrichment works
+The FastAPI service exposes the core workflow under `/api`:
 
-`backend/app/llm/lighting_provider.py` is the deterministic core: regex/
-dictionary-driven classification (fixture vs. lamp/bulb, then fixture/lamp
-type), attribute extraction (finish codes embedded in MPN suffixes, bulb
-shape codes, CCT, wattage, dimensions), normalization (manufacturer/brand
-cleanup, UOM formatting, decimal↔fraction conversion), and description
-building (the real 4-tier invoice/mobile/short/long formula reverse-
-engineered from Unilog's own worked example).
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/auth/login` | Create a signed session |
+| `GET /api/products` | List enriched records |
+| `POST /api/products` | Enrich one raw product |
+| `POST /api/products/batch` | Enrich a JSON batch |
+| `POST /api/products/seed` | Load the bundled 211-row sample |
+| `POST /api/products/upload` | Import CSV or XLSX and enrich it |
+| `PATCH /api/products/{id}` | Save reviewer edits |
+| `GET /api/products/export` | Export CSV or JSON |
+| `GET /api/metrics` | Read internal QA and review metrics |
+| `POST /api/products/evaluate` | Score against a Delivery Format file |
 
-`backend/app/llm/hybrid_provider.py` (the default) wraps it with real local
-LLM calls for fallback classification and grounded long-description
-writing — see [backend/README.md](backend/README.md#hybrid-ai-layer). Falls
-back to the pure deterministic result automatically if Ollama isn't
-running, so the app never breaks with it stopped, just runs less
-AI-assisted. Everything is built behind a swappable `EnrichmentProvider`
-interface — a cloud model (Gemini, etc.) can replace Ollama without
-touching the rest of the app.
+Interactive OpenAPI docs are available at `/docs` while the backend is running.
+For backend configuration, provider details, and data contracts, see
+[`backend/README.md`](backend/README.md).
 
-Every generated field carries:
-- **value** — the enriched content
-- **confidence** — high / medium / low
-- **source** — `input` / `inferred` (rule-based) / `llm` (a real model call)
-- **rationale** — why the engine produced this value
+## What is measured
 
-Every enumerated attribute also carries **lov_compliant** — whether the
-value falls inside the placeholder controlled vocabulary (not Unilog's real
-Unicat LOV).
+After **Reseed**, the supplied run produced these reproducible operational
+signals: 211 records enriched, 210 classified at high confidence, 83
+auto-approved, 6 flagged for review, 99.0% vocabulary compliance, and 100%
+invoice-description character-limit compliance. These are pipeline QA metrics,
+not claims of ground-truth accuracy.
 
-Cryptic trade shorthand is decoded before anything reads it — `3/8 CPLG BRS
-150#` becomes `3/8 Coupling Brass 150 Pound Class`. That is the brief's own
-opening example, and without it the classifier called that row a hex bolt.
+The repository includes two worked output examples, but not Unilog's full
+200-item labeled ground truth. Lumen includes a scorer that can consume that
+file when available and reports an attainable ceiling based on what appeared
+in the raw input.
 
-Values the model proposes are only trusted when they trace back to the
-source text; anything unverifiable is kept at low confidence and routed to a
-human rather than silently accepted.
+## Honest boundaries
 
-A rule-based validation layer (`backend/app/validation.py`) flags character-
-limit violations, placeholder-LOV misses, and — notably — cases where the
-MPN embedded in the description doesn't match the row's own MPN, a real
-data-quality issue found in the raw catalog. Batch-level de-duplication
-(`backend/app/dedup.py`) catches exact and near-verbatim duplicate rows.
-A metrics endpoint (`GET /api/metrics`) surfaces self-computed QA numbers —
-classification confidence, LOV compliance, char-limit compliance — standing
-in for field-level accuracy since the real 200-item ground truth wasn't
-available to score against.
+The real reference pack was not available in this environment. The controlled
+vocabulary, manufacturer lookup, and most UOM data in `backend/app/reference/`
+are clearly marked, self-authored placeholders. Digital assets and manufacturer
+source retrieval are intentionally out of scope. Empty output fields are left
+empty rather than invented, and model values that cannot be traced to source
+text are kept low-confidence and routed to review.
 
-Items with no validation flags and no low-confidence field skip human
-review automatically (`status: "reviewed"`, tagged `Auto-approved` — not
-just "Reviewed" — so it stays visible that no person looked at it); anything
-else stays `Pending` for the review UI, where the catalog table sorts by
-Classpath, Confidence, or Status.
+See the exact file-by-file breakdown in
+[`backend/README.md`](backend/README.md#whats-real-vs-placeholder).
+
+## Repository layout
+
+```text
+backend/app/llm/          Providers, specialist lane, generic lane, factory
+backend/app/reference/    UOM, manufacturer, abbreviation, and LOV helpers
+backend/app/routes/       Auth, products, and metrics endpoints
+backend/app/schema/       Verbatim 252-column Delivery Format header contract
+frontend/src/components/  Dashboard, review, import, evaluation, and login UI
+reference_examples/       Worked Delivery Format examples
+```
+
+## Development checks
+
+```bash
+cd frontend
+npm run build
+npm run lint
+```
+
+The backend has no separate build step; run it with Uvicorn as shown above.
