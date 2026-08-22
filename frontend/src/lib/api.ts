@@ -53,11 +53,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     try {
       detail = (JSON.parse(body) as { detail?: unknown }).detail;
     } catch {
-      // body wasn't JSON — ApiError falls back to the status text below
+      detail = body || undefined;
     }
     throw new ApiError(res.status, detail, `${res.status} ${res.statusText}: ${body}`);
   }
-  return res.json();
+  const body = await res.text();
+  if (!body) throw new Error(`The API returned an empty response for ${path}. Check the Render backend URL.`);
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    throw new Error(`The API returned invalid JSON for ${path}: ${body.slice(0, 160)}`);
+  }
 }
 
 export const api = {

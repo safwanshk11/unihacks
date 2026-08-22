@@ -19,10 +19,7 @@ services:
       - key: AUTH_SECRET
         generateValue: true
       - key: FRONTEND_ORIGIN
-        fromService:
-          type: web
-          name: lumen-console
-          property: host
+        value: https://lumen-console.onrender.com
 
   - type: web
     name: lumen-console
@@ -32,10 +29,7 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: lumen-api
-          property: host
+        value: https://lumen-api.onrender.com
     routes:
       - type: rewrite
         source: /*
